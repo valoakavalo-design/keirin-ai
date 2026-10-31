@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: keirin-ai
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: npm start
+    envVars:
+      - key: DATA_DIR
+        value: ./data

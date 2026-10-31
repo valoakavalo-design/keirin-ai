@@ -1,0 +1,1 @@
+{"description":"競輪予想AI（外部公開用スタンドアロン版）: 出走表・並び予想・コメントを自動取得し、モデルv2で予想。オッズ/想定回収率/穴狙い/風表示、勝負レースモード、履歴・成績集計。","engines":{"node":">=18"},"license":"UNLICENSED","main":"server.js","name":"keirin-yosou-ai","private":true,"scripts":{"start":"node server.js"},"type":"commonjs","version":"1.0.0"}
