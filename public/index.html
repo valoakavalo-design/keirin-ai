@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>競輪予想AI</title>
+<style>
+  :root { --ink:#1e293b; --sub:#64748b; --line:#e2e8f0; --accent:#2563eb; --red:#dc2626; --bg:#f8fafc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; background:var(--bg); color:var(--ink); font-size:16px; line-height:1.55; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 16px; position:sticky; top:0; z-index:20; }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:2px 0 0; color:var(--sub); font-size:12px; }
+  nav.tabs { display:flex; gap:8px; margin-top:10px; }
+  nav.tabs button { flex:1; padding:9px; border:1px solid var(--line); background:#fff; border-radius:10px; font-size:15px; cursor:pointer; }
+  nav.tabs button.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+  main { max-width:860px; margin:0 auto; padding:14px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .card h2 { font-size:16px; margin:0 0 10px; }
+  .card h3 { font-size:14px; margin:14px 0 6px; color:var(--ink); }
+  label { font-size:13px; color:var(--sub); display:block; margin-bottom:4px; }
+  input[type=date], input[type=text], input[type=number], select { padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--ink); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chipbtn { border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 14px; font-size:14px; cursor:pointer; }
+  .chipbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .racegrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:8px; }
+  .racebtn { border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 4px; cursor:pointer; text-align:center; }
+  .racebtn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .racebtn small { display:block; color:inherit; opacity:.75; font-size:11px; }
+  .primarybtn { width:100%; padding:13px; background:var(--red); color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:12px; }
+  .primarybtn:disabled { background:#cbd5e1; cursor:default; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; font-weight:700; }
+  .badge.shoubu { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+  .badge.skip { background:#f1f5f9; color:#475569; border:1px solid var(--line); }
+  .badge.hit { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+  .car { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; font-weight:700; font-size:14px; border:1px solid #94a3b8; vertical-align:-6px; margin-right:2px; }
+  .formation { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:15px; margin:6px 0; }
+  .formation .pos { color:var(--sub); font-size:13px; }
+  .formation .arrow { color:var(--sub); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th, td { border:1px solid var(--line); padding:6px 5px; text-align:center; }
+  th { background:#f1f5f9; font-weight:600; }
+  td.name { text-align:left; }
+  .tap { cursor:pointer; text-decoration:underline dotted #94a3b8; }
+  .tblwrap { overflow-x:auto; }
+  .note { font-size:12px; color:var(--sub); }
+  .ev-good { color:#b91c1c; font-weight:700; }
+  .marks { display:flex; flex-wrap:wrap; gap:10px; }
+  .markbox { border:1px solid var(--line); border-radius:10px; padding:8px 10px; min-width:118px; background:#fff; }
+  .markbox .mk { font-size:18px; font-weight:800; }
+  .lines { display:flex; flex-direction:column; gap:6px; }
+  .line-row { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .line-row .role { font-size:11px; color:var(--sub); margin-right:6px; }
+  .hist-item { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; background:#fff; }
+  .hist-item .row { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center; }
+  .smallbtn { border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat { border:1px solid var(--line); border-radius:12px; padding:10px; background:#fff; text-align:center; }
+  .stat .v { font-size:22px; font-weight:800; }
+  .stat .k { font-size:12px; color:var(--sub); }
+  #modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:50; }
+  #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; border-radius:14px; width:min(520px,92vw); max-height:84vh; overflow:auto; padding:16px; }
+  .bar-row { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:13px; }
+  .bar-track { flex:1; background:#f1f5f9; border-radius:6px; height:14px; }
+  .bar-fill { background:var(--accent); height:14px; border-radius:6px; }
+  .bar-row.me .bar-fill { background:var(--red); }
+  .err { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px; }
+  .loading { color:var(--sub); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚴 競輪予想AI</h1>
+  <p>モデルv2（1着スコア／3着内スコア分離）＋勝負レースモード。出走表・並び・コメントは楽天Kドリームスから自動取得。結果は見ずに予想します（ブラインド）。</p>
+  <nav class="tabs">
+    <button id="tab-predict" class="active" onclick="showTab('predict')">予想する</button>
+    <button id="tab-history" onclick="showTab('history')">履歴・成績</button>
+  </nav>
+</header>
+<main>
+  <section id="view-predict">
+    <div class="card">
+      <h2>レースを選ぶ</h2>
+      <label>日付</label>
+      <input type="date" id="date-input">
+      <div id="venue-area" style="margin-top:12px"></div>
+      <div id="race-area" style="margin-top:12px"></div>
+      <button class="primarybtn" id="predict-btn" disabled onclick="doPredict()">このレースを予想する</button>
+      <p class="note">予想時にレース前の3連単オッズも自動収集します。結果・払戻ページは開きません。</p>
+      <div id="predict-msg"></div>
+    </div>
+    <div id="result-area"></div>
+  </section>
+  <section id="view-history" style="display:none">
+    <div class="card"><h2>成績集計</h2><div class="stats" id="stats-area"></div>
+      <p class="note">回収率は払戻を入力したレースのみで計算します（1点100円）。勝負レースのみの集計が本命の指標です。</p></div>
+    <div id="history-area"></div>
+  </section>
+</main>
+<div id="modal-bg" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CAR_COLORS = {1:['#ffffff','#111'],2:['#111111','#fff'],3:['#e60012','#fff'],4:['#0055a4','#fff'],5:['#ffd400','#111'],6:['#009944','#fff'],7:['#f39800','#fff'],8:['#e85298','#fff'],9:['#7e318e','#fff']};
+const carChip = (n) => { const c = CAR_COLORS[n] || ['#e2e8f0','#111']; return `<span class="car" style="background:${c[0]};color:${c[1]}">${n}</span>`; };
+const MARKS = [['honmei','◎'],['taikou','○'],['tanana','▲']];
+let sel = { date:'', venue:null, raceNo:null };
+let currentRec = null;
+
+function todayJST(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'}); }
+function showTab(t){
+  $('#view-predict').style.display = t==='predict' ? '' : 'none';
+  $('#view-history').style.display = t==='history' ? '' : 'none';
+  $('#tab-predict').classList.toggle('active', t==='predict');
+  $('#tab-history').classList.toggle('active', t==='history');
+  if (t==='history') loadHistory();
+}
+
+async function loadVenues(){
+  sel.venue = null; sel.raceNo = null; $('#predict-btn').disabled = true;
+  $('#venue-area').innerHTML = '<p class="loading">開催場を読み込み中…</p>'; $('#race-area').innerHTML='';
+  try {
+    const r = await (await fetch(`/api/venues?date=${sel.date}`)).json();
+    if (!r.ok) throw new Error(r.error || '取得失敗');
+    if (!r.venues.length) { $('#venue-area').innerHTML = '<p>この日の開催はありません。</p>'; return; }
+    $('#venue-area').innerHTML = '<label>競輪場</label><div class="chips">' + r.venues.map((v,i)=>
+      `<button class="chipbtn" data-i="${i}" onclick="selectVenue(${i})">${esc(v.venueName)}${v.dayIndex>1?` <small>${v.dayIndex}日目</small>`:''}</button>`).join('') + '</div>';
+    window._venues = r.venues;
+  } catch(e){ $('#venue-area').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+async function selectVenue(i){
+  sel.venue = window._venues[i]; sel.raceNo = null; $('#predict-btn').disabled = true;
+  document.querySelectorAll('#venue-area .chipbtn').forEach((b,j)=>b.classList.toggle('active', i===j));
+  $('#race-area').innerHTML = '<p class="loading">レース一覧を読み込み中…</p>';
+  try {
+    const r = await (await fetch(`/api/races?venueSlug=${sel.venue.venueSlug}&kaisaiDateId=${sel.venue.kaisaiDateId}`)).json();
+    if (!r.ok) throw new Error(r.error || '取得失敗');
+    window._meeting = r;
+    $('#race-area').innerHTML = `<label>${esc(r.grade||'')} ${esc(r.meetingTitle||'')} ― レース</label><div class="racegrid">` +
+      r.races.map(x=>`<button class="racebtn" data-r="${x.raceNo}" onclick="selectRace(${x.raceNo})">${x.raceNo}R<small>${esc(x.startTime)} ${esc(x.raceClass||'')}</small></button>`).join('') + '</div>';
+  } catch(e){ $('#race-area').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+function selectRace(n){
+  sel.raceNo = n;
+  document.querySelectorAll('#race-area .racebtn').forEach(b=>b.classList.toggle('active', +b.dataset.r===n));
+  $('#predict-btn').disabled = false;
+}
+async function doPredict(){
+  const btn = $('#predict-btn'); btn.disabled = true; btn.textContent = '出走表・オッズを取得して予想中…（30秒ほどかかります）';
+  $('#predict-msg').innerHTML = '';
+  try {
+    const r = await (await fetch('/api/predict', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ date: sel.date, venueSlug: sel.venue.venueSlug, kaisaiDateId: sel.venue.kaisaiDateId, raceNo: sel.raceNo }) })).json();
+    if (!r.ok) throw new Error(r.error || '予想に失敗しました');
+    currentRec = r.prediction;
+    $('#result-area').innerHTML = renderPrediction(r.prediction);
+    window.scrollTo({ top: $('#result-area').offsetTop - 80, behavior:'smooth' });
+  } catch(e){ $('#predict-msg').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = 'このレースを予想する';
+}
+
+// ---------- 予想表示 ----------
+function markName(rec, car){ const r = (rec.riders||[]).find(x=>x.carNo===car); return r ? r.name : ''; }
+function formationHtml(rec, isShoubu){
+  const H=rec.honmei, T=rec.taikou, A=rec.tanana, D=(rec.ana||[])[0];
+  const pos = (label, cars) => `<span class="pos">${label}</span> ${cars.filter(Boolean).map(carChip).join(' ')}`;
+  if (isShoubu) return `<div class="formation">${pos('1着',[H])}<span class="arrow">→</span>${pos('2着',[T,A])}<span class="arrow">→</span>${pos('3着',[T,A,D])}<span style="font-weight:700">＝ 4点</span></div>`;
+  return `<div class="formation">${pos('1着',[H])}<span class="arrow">→</span>${pos('2着',[T,A,D])}<span class="arrow">→</span>${pos('3着',[T,A,D])}<span>（◎軸6点）</span></div>
+          <div class="formation">${pos('1着',[T,A])}<span class="arrow">→</span>${pos('2着',[H])}<span class="arrow">→</span>${pos('3着',[A,T])}<span>（相手頭2点）</span></div>`;
+}
+function ticketTable(details){
+  if (!details || !details.length) return '';
+  return `<div class="tblwrap"><table><tr><th>買い目</th><th>オッズ</th><th>モデル確率</th><th>想定回収率</th></tr>` +
+    details.map(d=>`<tr><td style="font-weight:700">${esc(d.combo)}</td><td>${d.odds!=null?d.odds:'―'}</td><td>${d.prob}%</td><td class="${d.ev>=120?'ev-good':''}">${d.ev!=null?d.ev+'%':'―'}</td></tr>`).join('') + '</table></div>';
+}
+function renderPrediction(rec){
+  const isShoubu = !!rec.isShoubu;
+  const primaryDetails = isShoubu ? (rec.shoubuTicketDetails || []) : (rec.ticketDetails || []);
+  const fallbackDetails = (isShoubu ? rec.shoubuTickets : rec.tickets || []).map(c=>({combo:c, odds:null, prob:null, ev:null}));
+  const details = primaryDetails.length ? primaryDetails : fallbackDetails;
+  const riders = rec.riders || [];
+  const markOf = {};
+  if (rec.honmei) markOf[rec.honmei]='◎'; if (rec.taikou) markOf[rec.taikou]='○'; if (rec.tanana) markOf[rec.tanana]='▲'; if ((rec.ana||[])[0]) markOf[rec.ana[0]]='△';
+  const lineOfCar = {};
+  (rec.lines||[]).forEach((l,li)=>l.members.forEach((c,i)=>lineOfCar[c]={line:li+1,pos:i+1,size:l.members.length,role:(l.roles||[])[i]||''}));
+  let h = `<div class="card">
+    <h2>${esc(rec.venueName)} ${rec.raceNo}R ${esc(rec.raceClass||'')} <span class="note">${esc(rec.raceDate)} 発走 ${esc(rec.startTime||'')}</span></h2>
+    <p class="note">${esc(rec.grade||'')} ${esc(rec.meetingTitle||'')} ／ 出典: <a href="${esc(rec.sourceUrl||'#')}" target="_blank" rel="noopener">楽天Kドリームス出走表</a></p>
+    <div style="margin:8px 0">${isShoubu
+      ? `<span class="badge shoubu">🔥 勝負レース（◎予想勝率 ${rec.honmeiWinProb}%）</span>`
+      : `<span class="badge skip">見送り推奨（◎予想勝率 ${rec.honmeiWinProb}% ＜ 55%）</span>`}
+      ${rec.actualResult ? `<span class="badge ${rec.isHit?'hit':''}">結果 ${esc(rec.actualResult)} ${rec.isHit?'的中🎯':'―'}</span>`:''}</div>
+    <div class="marks">${MARKS.map(([k,mk])=>`<div class="markbox"><span class="mk">${mk}</span> ${carChip(rec[k])} ${esc(markName(rec, rec[k]))}<br><span class="note">勝率予想 ${(riders.find(r=>r.carNo===rec[k])||{}).winProb ?? ''}%</span></div>`).join('')}
+      ${(rec.ana||[])[0]?`<div class="markbox"><span class="mk">△</span> ${carChip(rec.ana[0])} ${esc(markName(rec, rec.ana[0]))}</div>`:''}</div>
+    <h3>${isShoubu ? '勝負買い目・3連単フォーメーション' : '参考買い目・3連単（8点）'}</h3>
+    ${formationHtml(rec, isShoubu)}
+    ${ticketTable(details)}
+    <p class="note">合計確率 ${rec.primaryHitProb ?? '―'}% ／ セット全体の想定回収率 ${rec.primaryEv != null ? rec.primaryEv + '%' : '―'}（モデル確率×オッズ。確率はHarville式の近似）</p>
+    <p class="note">${rec.oddsStatus==='ok' ? `オッズ: ${esc(rec.oddsTime||'')}（${rec.oddsCount}通り取得）` : 'オッズ: 取得不可のため想定回収率は表示できません'}</p>
+    <p class="note">勝負レースモード検証（フォーメーション版）: 2024年5〜8月 回収率105.1%／9〜12月 120.0%。月によるばらつきがあり、100%超を保証するものではありません。</p>
+  </div>`;
+  if ((rec.anaTickets||[]).length){
+    h += `<div class="card"><h2>🕳 穴狙い（割安さ狙い・最大4点）</h2>
+      <p class="note">当たりやすさではなく、オッズに対してモデル評価が割安な組み合わせの提示です。</p>` +
+      rec.anaTickets.map(t=>`<p><b>${esc(t.combo)}</b> オッズ ${t.odds}倍 ／ 確率 ${t.prob}% ／ 想定回収率 <span class="ev-good">${t.ev}%</span><br><span class="note">${esc(t.reason||'')}</span></p>`).join('') + `</div>`;
+  }
+  if (rec.wind){
+    const w = rec.wind;
+    h += `<div class="card"><h2>🌬 風（推定）</h2>
+      <p>${esc(w.directionLabel)}の風 ${w.speedMs} m/s${w.gustMs!=null?`（突風 ${w.gustMs} m/s）`:''} ／ ホーム直線: ${esc(w.homeLabel)} ／ バック直線: ${esc(w.backLabel)}</p>
+      <p class="note">${esc(w.forecastTime||'')} の予報（出典: ${esc(w.source||'Open-Meteo')}）。風は展開解説の材料のみで、スコアには入れていません（2024年27,715レースの検証で風速帯によるライン先頭1着率の差は18.5%/17.4%/17.7%/18.6%とほぼ無かったため）。</p></div>`;
+  }
+  if ((rec.lines||[]).length){
+    h += `<div class="card"><h2>並び予想</h2><div class="lines">` + rec.lines.map(l=>
+      `<div class="line-row">${l.members.map((c,i)=>`${carChip(c)}<span class="role">${esc((l.roles||[])[i]||'')}</span>`).join('<span style="color:#94a3b8">―</span> ')}${l.members.length===1?'<span class="role">単騎</span>':''}</div>`).join('') + `</div></div>`;
+  }
+  h += `<div class="card"><h2>出走表（セルをタップで内訳）</h2><div class="tblwrap"><table>
+    <tr><th>印</th><th>車</th><th>選手</th><th>級</th><th>脚</th><th>得点</th><th>S</th><th>B</th><th>逃捲差マ</th><th>勝率/連対/3連</th><th>1着S</th><th>3着内S</th><th>勝率予想</th></tr>` +
+    riders.map(r=>{ const li = lineOfCar[r.carNo]; return `<tr>
+      <td style="font-weight:800">${markOf[r.carNo]||''}</td><td>${carChip(r.carNo)}</td>
+      <td class="name"><b>${esc(r.name)}</b> <span class="note">${esc(r.prefecture||'')} ${r.age||''}歳 ${r.term||''}期${li?` ／ ライン${li.line}・${li.pos}番手${li.size===1?'（単騎）':''}`:''}</span>${r.comment?`<br><span class="note">「${esc(r.comment)}」</span>`:''}</td>
+      <td>${esc(r.classBand||'')}</td><td>${esc(r.style||'')}</td>
+      <td class="tap" onclick="openBreakdown(${r.carNo},'point')">${r.point}</td>
+      <td class="tap" onclick="openBreakdown(${r.carNo},'s')">${r.s}</td>
+      <td class="tap" onclick="openBreakdown(${r.carNo},'b')">${r.b}</td>
+      <td class="tap" onclick="openBreakdown(${r.carNo},'kimari')">${r.nige}/${r.makuri}/${r.sashi}/${r.markCnt ?? r.mark ?? 0}</td>
+      <td class="tap" onclick="openBreakdown(${r.carNo},'rates')">${r.winRate}/${r.quinellaRate}/${r.trifectaRate}</td>
+      <td>${r.scoreWin ?? ''}</td><td>${r.scorePlace ?? ''}</td><td>${r.winProb ?? ''}%</td></tr>`; }).join('') +
+    `</table></div><p class="note">1着S＝1着スコア、3着内S＝3着内スコア（モデルv2）。◎は1着スコア首位、○▲△は3着内スコア順。</p></div>`;
+  if (rec.summary || rec.scenario || (rec.lineNotes||[]).length){
+    h += `<div class="card"><h2>展開解説（テンプレート生成）</h2>
+      ${(rec.lineNotes||[]).map(n=>`<p><b>${esc(n.label)}</b><br>${esc(n.note)}</p>`).join('')}
+      ${rec.scenario?`<p>${esc(rec.scenario)}</p>`:''}
+      ${rec.summary?`<p><b>まとめ:</b> ${esc(rec.summary)}</p>`:''}
+      ${rec.raceReview?`<p class="note">記者レース評（Kドリームス）: ${esc(rec.raceReview)}</p>`:''}</div>`;
+  }
+  return h;
+}
+
+// ---------- 内訳モーダル ----------
+function bars(rec, key, meCar, fmt){
+  const riders = [...(rec.riders||[])].sort((a,b)=>(b[key]||0)-(a[key]||0));
+  const max = Math.max(1, ...riders.map(r=>r[key]||0));
+  return riders.map(r=>`<div class="bar-row ${r.carNo===meCar?'me':''}">${carChip(r.carNo)}<span style="width:76px">${esc(r.name)}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round((r[key]||0)/max*100)}%"></div></div><span>${fmt?fmt(r):(r[key]||0)}</span></div>`).join('');
+}
+function openBreakdown(carNo, kind){
+  const rec = currentRec; if (!rec) return;
+  const r = (rec.riders||[]).find(x=>x.carNo===carNo); if (!r) return;
+  const starts = (r.first||0)+(r.second||0)+(r.third||0)+(r.out||0);
+  let title='', body='';
+  if (kind==='point'){
+    title = `${r.name} の競走得点`;
+    const mean = rec.riders.reduce((s,x)=>s+x.point,0)/rec.riders.length;
+    const rank = [...rec.riders].sort((a,b)=>b.point-a.point).findIndex(x=>x.carNo===carNo)+1;
+    body = `<p>得点 <b>${r.point}</b>（メンバー平均 ${mean.toFixed(2)}、${rank}位）。モデルでは得点差が1着スコア最大の材料です。</p>` + bars(rec,'point',carNo);
+  } else if (kind==='s'){
+    title = `${r.name} のSの内訳`;
+    body = `<p>S総数 <b>${r.s}</b> ／ 出走数 ${starts} ／ S率 ${starts?((r.s/starts*100).toFixed(1)):'―'}%</p>` + bars(rec,'s',carNo) +
+      `<p class="note">※車番別のS内訳（何番車でSを取ったか）は、取得元（Kドリームス出走表）にデータが無いため取得不可です。捏造はせず、S総数・出走数・S率とメンバー比較のみ表示します。</p>`;
+  } else if (kind==='b'){
+    title = `${r.name} のBの内訳`;
+    body = `<p>B総数 <b>${r.b}</b>（バック先行回数）。先行意欲の目安です。</p>` + bars(rec,'b',carNo);
+  } else if (kind==='kimari'){
+    title = `${r.name} の決まり手内訳`;
+    const items = [['逃',r.nige],['捲',r.makuri],['差',r.sashi],['マ',r.markCnt ?? r.mark ?? 0]];
+    const max = Math.max(1, ...items.map(i=>i[1]));
+    body = items.map(([k,v])=>`<div class="bar-row"><span style="width:30px">${k}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v/max*100)}%"></div></div><span>${v}</span></div>`).join('') +
+      `<p class="note">脚質は「${esc(r.style||'')}」。逃+捲（自力）と差+マ（追込）のバランスがスコア材料になります。近況の着順内訳: 1着${r.first}・2着${r.second}・3着${r.third}・着外${r.out}。</p>`;
+  } else if (kind==='rates'){
+    title = `${r.name} の率の内訳`;
+    body = `<p>勝率 <b>${r.winRate}%</b> ／ 連対率 ${r.quinellaRate}% ／ 3連対率 ${r.trifectaRate}%</p>` +
+      `<h3>3連対率（メンバー比較）</h3>` + bars(rec,'trifectaRate',carNo) +
+      `<h3>勝率（メンバー比較）</h3>` + bars(rec,'winRate',carNo);
+  }
+  $('#modal').innerHTML = `<h2 style="margin-top:0">${esc(title)}</h2>${body}<button class="smallbtn" onclick="closeModal()" style="margin-top:10px">閉じる</button>`;
+  $('#modal-bg').style.display = 'block';
+}
+function closeModal(){ $('#modal-bg').style.display='none'; }
+
+// ---------- 履歴 ----------
+async function loadHistory(){
+  try {
+    const r = await (await fetch('/api/predictions')).json();
+    if (!r.ok) throw new Error(r.error||'取得失敗');
+    const s = r.stats;
+    const statBox = (k, v) => `<div class="stat"><div class="v">${v}</div><div class="k">${k}</div></div>`;
+    $('#stats-area').innerHTML =
+      statBox('予想総数', s.total) + statBox('結果入力済', s.resulted) +
+      statBox('全体の的中率', s.primary.hitRate!=null ? s.primary.hitRate+'%' : '―') +
+      statBox('全体の回収率', s.primary.roi!=null ? s.primary.roi+'%' : '―') +
+      statBox('勝負レース的中率', s.shoubu.hitRate!=null ? s.shoubu.hitRate+'%（'+s.shoubu.n+'件）' : '―') +
+      statBox('勝負レース回収率', s.shoubu.roi!=null ? s.shoubu.roi+'%' : '―');
+    $('#history-area').innerHTML = (r.predictions||[]).map(p=>`
+      <div class="hist-item"><div class="row">
+        <div><b>${esc(p.raceDate)} ${esc(p.venueName)} ${p.raceNo}R</b> ${esc(p.raceClass||'')}
+          ${p.isShoubu?'<span class="badge shoubu">勝負</span>':'<span class="badge skip">見送り</span>'}
+          ${p.actualResult?`<span class="badge ${p.isHit?'hit':''}">結果 ${esc(p.actualResult)}${p.isHit?' 的中🎯':''}</span>`:''}<br>
+          <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou||'―'} ▲${p.tanana||'―'} △${(p.ana||[])[0]||'―'}（◎勝率 ${p.honmeiWinProb}%）</span></div>
+        <div><button class="smallbtn" onclick="showHistoryDetail(${p.id})">詳細</button></div>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">
+        <input type="text" id="res-${p.id}" placeholder="結果 1-2-3" value="${esc(p.actualResult||'')}" style="width:110px">
+        <input type="number" id="pay-${p.id}" placeholder="払戻(円)" value="${p.payoutYen??''}" style="width:110px">
+        <button class="smallbtn" onclick="saveResult(${p.id})">結果を保存</button>
+        <span class="note">結果は手入力のみ（自動取得しません）</span>
+      </div></div>`).join('') || '<p>履歴はまだありません。</p>';
+    window._history = r.predictions;
+  } catch(e){ $('#history-area').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+function showHistoryDetail(id){
+  const p = (window._history||[]).find(x=>x.id===id); if (!p) return;
+  currentRec = p; showTab('predict');
+  $('#result-area').innerHTML = renderPrediction(p);
+  window.scrollTo({ top: $('#result-area').offsetTop - 80, behavior:'smooth' });
+}
+async function saveResult(id){
+  const result = document.getElementById(`res-${id}`).value.trim();
+  const payout = document.getElementById(`pay-${id}`).value;
+  const r = await (await fetch(`/api/predictions/${id}/result`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ result, payoutYen: payout === '' ? null : +payout }) })).json();
+  if (!r.ok) { alert(r.error || '保存に失敗しました'); return; }
+  loadHistory();
+}
+
+// init
+$('#date-input').value = todayJST();
+sel.date = $('#date-input').value;
+$('#date-input').addEventListener('change', e=>{ sel.date = e.target.value; loadVenues(); });
+loadVenues();
+</script>
+</body>
+</html>
