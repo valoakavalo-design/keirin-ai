@@ -53,10 +53,11 @@ function setsOf(rec) {
 function applyResult(rec) {
   const r = resultStr(rec);
   const sets = setsOf(rec);
-  if (!r) { rec.isHit = null; rec.isShoubuHit = null; rec.isAnaHit = null; return rec; }
+  if (!r) { rec.isHit = null; rec.isShoubuHit = null; rec.isAnaHit = null; rec.isChosenPlanHit = null; return rec; }
   rec.isHit = sets.primary.includes(r);
   rec.isShoubuHit = rec.isShoubu ? sets.shoubu.includes(r) : null;
   rec.isAnaHit = sets.ana.length ? sets.ana.includes(r) : null;
+  rec.isChosenPlanHit = (rec.chosenPlan && Array.isArray(rec.chosenPlan.combos)) ? rec.chosenPlan.combos.includes(r) : null;
   return rec;
 }
 function computeStats() {
@@ -110,6 +111,7 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
   try { oddsRes = await kdreams.getOdds(venueSlug, kaisaiDateId, raceNo); } catch { /* オッズ無しでも予想は続行 */ }
   const oddsMap = oddsRes.status === 'ok' ? oddsRes.odds : null;
   const tickets = model.buildTickets(marks, probs, oddsMap);
+  const plans = model.buildPlans(marks, detail.riders, probs, oddsMap);
   const isShoubu = honmei.winProb >= 55;
   const primary = isShoubu ? tickets.shoubu : tickets.reference;
   const anaTickets = model.buildAna(detail.riders, marks, probs, oddsMap);
@@ -129,6 +131,7 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
     tickets: tickets.reference.combos, ticketDetails: tickets.reference.details,
     shoubuTickets: tickets.shoubu.combos, shoubuTicketDetails: tickets.shoubu.details,
     primaryEv: primary.ev, primaryHitProb: primary.hitProb,
+    plans, chosenPlan: null, isChosenPlanHit: null,
     anaTickets,
     oddsStatus: oddsRes.status, oddsCount: oddsRes.count, oddsTime: oddsRes.time, oddsFetchedAt: new Date().toISOString(),
     wind, lineNotes: commentary.lineNotes, summary: commentary.summary, scenario: commentary.scenario,
@@ -178,6 +181,17 @@ const server = http.createServer(async (req, res) => {
         rec.actualResult = result;
         rec.payoutYen = body.payoutYen === '' || body.payoutYen == null ? null : +body.payoutYen;
       }
+      applyResult(rec); saveStore(store);
+      return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
+    }
+    const mPlan = /^\/api\/predictions\/(\d+)\/plan$/.exec(p);
+    if (mPlan && req.method === 'POST') {
+      const body = await readBody(req);
+      const rec = store.predictions.find(x => x.id === +mPlan[1]);
+      if (!rec) return sendJson(res, 404, { ok: false, error: 'not found' });
+      const plan = (rec.plans || []).find(pl => pl.id === body.planId);
+      if (!plan) return sendJson(res, 400, { ok: false, error: 'プランが見つかりません' });
+      rec.chosenPlan = { id: plan.id, name: plan.name, combos: plan.combos };
       applyResult(rec); saveStore(store);
       return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
     }
