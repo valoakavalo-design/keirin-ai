@@ -64,6 +64,15 @@
   .bar-track { flex:1; background:#f1f5f9; border-radius:6px; height:14px; }
   .bar-fill { background:var(--accent); height:14px; border-radius:6px; }
   .bar-row.me .bar-fill { background:var(--red); }
+  .plantabs { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0; }
+  .plantab { border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 13px; font-size:14px; cursor:pointer; }
+  .plantab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .plantab .chosen { font-size:11px; font-weight:700; color:var(--red); }
+  .plantab.active .chosen { color:#fecaca; }
+  .plan-notation { font-size:22px; font-weight:800; letter-spacing:1px; margin:4px 0; }
+  .plan-meta { display:flex; gap:14px; flex-wrap:wrap; font-size:14px; margin:6px 0; }
+  .choosebtn { padding:10px 18px; background:var(--accent); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; margin:10px 0 4px; }
+  .choosebtn.chosen { background:#f1f5f9; color:#475569; border:1px solid var(--line); cursor:default; }
   .err { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px; }
   .loading { color:var(--sub); }
   a { color:var(--accent); }
@@ -175,6 +184,50 @@ function ticketTable(details){
   return `<div class="tblwrap"><table><tr><th>買い目</th><th>オッズ</th><th>モデル確率</th><th>想定回収率</th></tr>` +
     details.map(d=>`<tr><td style="font-weight:700">${esc(d.combo)}</td><td>${d.odds!=null?d.odds:'―'}</td><td>${d.prob}%</td><td class="${d.ev>=120?'ev-good':''}">${d.ev!=null?d.ev+'%':'―'}</td></tr>`).join('') + '</table></div>';
 }
+// ---------- フォーメーションプラン ----------
+function plansHtml(rec){
+  const plans = rec.plans || [];
+  if (!plans.length) return '';
+  const chosenId = rec.chosenPlan ? rec.chosenPlan.id : null;
+  let activeIdx = Math.max(0, plans.findIndex(p=>p.id===chosenId));
+  let h = `<div class="card"><h2>🎯 フォーメーションプラン（3連単）</h2>`;
+  if (!rec.isShoubu) h += `<p class="note">見送りレースのため、各プランは参考表示です。</p>`;
+  if (rec.chosenPlan){
+    const hitTxt = rec.actualResult ? (rec.isChosenPlanHit ? ' ／ 選択プラン的中🎯' : ' ／ 選択プランは不的中') : '';
+    h += `<p>選択中のプラン: <b>${esc(rec.chosenPlan.name)}</b>（${(rec.chosenPlan.combos||[]).length}点）${hitTxt}</p>`;
+  }
+  h += `<div class="plantabs">` + plans.map((p,i)=>
+    `<button class="plantab ${i===activeIdx?'active':''}" onclick="selectPlanTab(${i})">${esc(p.name)}（${p.combos.length}点）${p.id===chosenId?' <span class="chosen">選択中</span>':''}</button>`).join('') + `</div>`;
+  h += `<div id="plan-panels">` + plans.map((p,i)=>{
+    const isChosen = p.id === chosenId;
+    return `<div class="plan-panel" style="display:${i===activeIdx?'':'none'}">
+      <div class="plan-notation">${esc(p.notation)}</div>
+      <p class="note">${esc(p.note||'')}</p>
+      <div class="plan-meta"><span>点数 <b>${p.combos.length}点</b></span><span>合計モデル確率 <b>${p.hitProb}%</b></span><span>想定回収率 <b>${p.ev!=null?p.ev+'%':'―（オッズ取得不可）'}</b></span></div>
+      ${ticketTable(p.details)}
+      ${isChosen
+        ? `<button class="choosebtn chosen" disabled>✓ このプランを選択中</button>${rec.actualResult?` <span class="badge ${rec.isChosenPlanHit?'hit':''}">${rec.isChosenPlanHit?'選択プラン的中🎯':'選択プランは不的中'}</span>`:''}`
+        : `<button class="choosebtn" onclick="choosePlan(${rec.id},'${p.id}')">このプランを選ぶ</button>`}
+    </div>`;
+  }).join('') + `</div>`;
+  h += `<p class="note">モデル確率はHarville式の近似です。プランを選んでも勝負レース集計の基準（基本プラン）は変わりません。</p></div>`;
+  return h;
+}
+function selectPlanTab(i){
+  document.querySelectorAll('#plan-panels .plan-panel').forEach((el,j)=>{ el.style.display = i===j ? '' : 'none'; });
+  document.querySelectorAll('.plantab').forEach((el,j)=>el.classList.toggle('active', i===j));
+}
+async function choosePlan(recId, planId){
+  try {
+    const r = await (await fetch(`/api/predictions/${recId}/plan`, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ planId }) })).json();
+    if (!r.ok) throw new Error(r.error || 'プランの保存に失敗しました');
+    currentRec = r.prediction;
+    if (window._history){ const i = window._history.findIndex(x=>x.id===recId); if (i>=0) window._history[i] = r.prediction; }
+    $('#result-area').innerHTML = renderPrediction(r.prediction);
+  } catch(e){ alert(e.message); }
+}
+
 function renderPrediction(rec){
   const isShoubu = !!rec.isShoubu;
   const primaryDetails = isShoubu ? (rec.shoubuTicketDetails || []) : (rec.ticketDetails || []);
@@ -201,6 +254,7 @@ function renderPrediction(rec){
     <p class="note">${rec.oddsStatus==='ok' ? `オッズ: ${esc(rec.oddsTime||'')}（${rec.oddsCount}通り取得）` : 'オッズ: 取得不可のため想定回収率は表示できません'}</p>
     <p class="note">勝負レースモード検証（フォーメーション版）: 2024年5〜8月 回収率105.1%／9〜12月 120.0%。月によるばらつきがあり、100%超を保証するものではありません。</p>
   </div>`;
+  h += plansHtml(rec);
   if ((rec.anaTickets||[]).length){
     h += `<div class="card"><h2>🕳 穴狙い（割安さ狙い・最大4点）</h2>
       <p class="note">当たりやすさではなく、オッズに対してモデル評価が割安な組み合わせの提示です。</p>` +
@@ -297,7 +351,8 @@ async function loadHistory(){
         <div><b>${esc(p.raceDate)} ${esc(p.venueName)} ${p.raceNo}R</b> ${esc(p.raceClass||'')}
           ${p.isShoubu?'<span class="badge shoubu">勝負</span>':'<span class="badge skip">見送り</span>'}
           ${p.actualResult?`<span class="badge ${p.isHit?'hit':''}">結果 ${esc(p.actualResult)}${p.isHit?' 的中🎯':''}</span>`:''}<br>
-          <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou||'―'} ▲${p.tanana||'―'} △${(p.ana||[])[0]||'―'}（◎勝率 ${p.honmeiWinProb}%）</span></div>
+          <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou||'―'} ▲${p.tanana||'―'} △${(p.ana||[])[0]||'―'}（◎勝率 ${p.honmeiWinProb}%）</span>
+          ${p.chosenPlan?`<br><span class="note">選択プラン: <b>${esc(p.chosenPlan.name)}</b>（${(p.chosenPlan.combos||[]).length}点）${p.actualResult?(p.isChosenPlanHit?' 的中🎯':' 不的中'):''}</span>`:''}</div>
         <div><button class="smallbtn" onclick="showHistoryDetail(${p.id})">詳細</button></div>
       </div>
       <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">
