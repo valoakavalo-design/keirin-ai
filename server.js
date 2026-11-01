@@ -116,8 +116,10 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
   const primary = isShoubu ? tickets.shoubu : tickets.reference;
   const anaTickets = model.buildAna(detail.riders, marks, probs, oddsMap);
   const wind = await getWind(venueSlug, date, startTime).catch(() => null);
-  const commentary = model.buildCommentary(detail.riders, detail.lines, marks, honmei, wind);
   const venueMeta = venuesMaster[venueSlug] || {};
+  // バンク情報は表示・展開解説の材料のみ（スコア・確率・買い目・EVには一切使わない）
+  const bank = venueMeta.bank ? { ...venueMeta.bank, traitComment: model.bankTraitComment(venueMeta.bank) } : null;
+  const commentary = model.buildCommentary(detail.riders, detail.lines, marks, honmei, wind, bank);
   const rec = {
     id: (store.predictions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1),
     createdAt: new Date().toISOString(),
@@ -134,7 +136,7 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
     plans, chosenPlan: null, isChosenPlanHit: null,
     anaTickets,
     oddsStatus: oddsRes.status, oddsCount: oddsRes.count, oddsTime: oddsRes.time, oddsFetchedAt: new Date().toISOString(),
-    wind, lineNotes: commentary.lineNotes, summary: commentary.summary, scenario: commentary.scenario,
+    wind, bank, lineNotes: commentary.lineNotes, summary: commentary.summary, scenario: commentary.scenario,
     raceReview: detail.raceReview,
     actualResult: null, payoutYen: null, isHit: null, isShoubuHit: null, isAnaHit: null,
   };
