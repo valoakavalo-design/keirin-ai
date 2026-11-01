@@ -266,6 +266,15 @@ function renderPrediction(rec){
       <p>${esc(w.directionLabel)}の風 ${w.speedMs} m/s${w.gustMs!=null?`（突風 ${w.gustMs} m/s）`:''} ／ ホーム直線: ${esc(w.homeLabel)} ／ バック直線: ${esc(w.backLabel)}</p>
       <p class="note">${esc(w.forecastTime||'')} の予報（出典: ${esc(w.source||'Open-Meteo')}）。風は展開解説の材料のみで、スコアには入れていません（2024年27,715レースの検証で風速帯によるライン先頭1着率の差は18.5%/17.4%/17.7%/18.6%とほぼ無かったため）。</p></div>`;
   }
+  if (rec.bank){
+    const b = rec.bank;
+    const dim = (v, unit) => v != null ? `${v}${unit}` : '―';
+    h += `<div class="card"><h2>🏟 バンク情報</h2>
+      <p><b>${esc(b.label||'')}</b>${b.traitComment ? ` ― ${esc(b.traitComment)}` : ''}</p>
+      <p>周長 ${b.lap} m ／ みなし直線 ${dim(b.straight, ' m')} ／ カント ${dim(b.cant, '°')}</p>
+      <p>2024年実測（${b.races}レース）: 勝者の決まり手 逃 ${b.nige}% ・ 捲 ${b.makuri}% ・ 差 ${b.sashi}% ／ 得点トップ勝率 ${b.topWin}% ／ 3連単払戻中央値 ${Number(b.medianPay||0).toLocaleString('ja-JP')}円</p>
+      <p class="note">決まり手割合などは2024年の実測、諸元は公開バンクデータ。バンク情報は表示と展開解説の材料のみで、スコア・買い目には反映していません（検証で予測精度の向上は確認できなかったため）。</p></div>`;
+  }
   if ((rec.lines||[]).length){
     h += `<div class="card"><h2>並び予想</h2><div class="lines">` + rec.lines.map(l=>
       `<div class="line-row">${l.members.map((c,i)=>`${carChip(c)}<span class="role">${esc((l.roles||[])[i]||'')}</span>`).join('<span style="color:#94a3b8">―</span> ')}${l.members.length===1?'<span class="role">単騎</span>':''}</div>`).join('') + `</div></div>`;
