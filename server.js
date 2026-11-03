@@ -48,16 +48,19 @@ function setsOf(rec) {
   const shoubu = rec.shoubuTickets || [];
   const ref = rec.tickets || [];
   const ana = (rec.anaTickets || []).map(t => (typeof t === 'string' ? t : t.combo));
-  return { shoubu, ref, ana, primary: rec.isShoubu ? shoubu : ref };
+  const s = (rec.sTickets || []).map(t => (typeof t === 'string' ? t : t.combo));
+  return { shoubu, ref, ana, s, primary: rec.isShoubu ? shoubu : ref };
 }
 function applyResult(rec) {
   const r = resultStr(rec);
   const sets = setsOf(rec);
-  if (!r) { rec.isHit = null; rec.isShoubuHit = null; rec.isAnaHit = null; rec.isChosenPlanHit = null; return rec; }
+  if (!r) { rec.isHit = null; rec.isShoubuHit = null; rec.isAnaHit = null; rec.isChosenPlanHit = null; rec.sHit = null; return rec; }
   rec.isHit = sets.primary.includes(r);
   rec.isShoubuHit = rec.isShoubu ? sets.shoubu.includes(r) : null;
   rec.isAnaHit = sets.ana.length ? sets.ana.includes(r) : null;
   rec.isChosenPlanHit = (rec.chosenPlan && Array.isArray(rec.chosenPlan.combos)) ? rec.chosenPlan.combos.includes(r) : null;
+  // S式の的中は、ロジックとしてS式を選んでいた場合のみ判定する
+  rec.sHit = rec.logic === 's' && sets.s.length ? sets.s.includes(r) : null;
   return rec;
 }
 function computeStats() {
@@ -115,6 +118,8 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
   const isShoubu = honmei.winProb >= 55;
   const primary = isShoubu ? tickets.shoubu : tickets.reference;
   const anaTickets = model.buildAna(detail.riders, marks, probs, oddsMap);
+  const anaShoubu = model.isAnaShoubu(anaTickets);
+  const sSet = model.buildSshiki(detail.riders, marks, probs, oddsMap);
   const wind = await getWind(venueSlug, date, startTime).catch(() => null);
   const venueMeta = venuesMaster[venueSlug] || {};
   // バンク情報は表示・展開解説の材料のみ（スコア・確率・買い目・EVには一切使わない）
@@ -134,7 +139,8 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
     shoubuTickets: tickets.shoubu.combos, shoubuTicketDetails: tickets.shoubu.details,
     primaryEv: primary.ev, primaryHitProb: primary.hitProb,
     plans, chosenPlan: null, isChosenPlanHit: null,
-    anaTickets,
+    anaTickets, anaShoubu,
+    sTickets: sSet.tickets, sTotalProb: sSet.totalProb, logic: 'suisho', sHit: null,
     oddsStatus: oddsRes.status, oddsCount: oddsRes.count, oddsTime: oddsRes.time, oddsFetchedAt: new Date().toISOString(),
     wind, bank, lineNotes: commentary.lineNotes, summary: commentary.summary, scenario: commentary.scenario,
     raceReview: detail.raceReview,
@@ -183,6 +189,16 @@ const server = http.createServer(async (req, res) => {
         rec.actualResult = result;
         rec.payoutYen = body.payoutYen === '' || body.payoutYen == null ? null : +body.payoutYen;
       }
+      applyResult(rec); saveStore(store);
+      return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
+    }
+    const mLogic = /^\/api\/predictions\/(\d+)\/logic$/.exec(p);
+    if (mLogic && req.method === 'POST') {
+      const body = await readBody(req);
+      const rec = store.predictions.find(x => x.id === +mLogic[1]);
+      if (!rec) return sendJson(res, 404, { ok: false, error: 'not found' });
+      if (!['suisho', 's'].includes(body.logic)) return sendJson(res, 400, { ok: false, error: 'logic は suisho か s で指定してください' });
+      rec.logic = body.logic;
       applyResult(rec); saveStore(store);
       return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
     }
