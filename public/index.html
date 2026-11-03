@@ -5,75 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>競輪予想AI</title>
 <style>
-  :root { --ink:#1e293b; --sub:#64748b; --line:#e2e8f0; --accent:#2563eb; --red:#dc2626; --bg:#f8fafc; }
+  :root { color-scheme: dark; --ink:#e5e7eb; --sub:#9ca3af; --line:#26262e; --accent:#e879f9; --accent2:#d946ef; --red:#ef4444; --bg:#0b0b10; --card:#15151d; --amber:#fbbf24; --orange:#f97316; --green:#4ade80; --purple:#a855f7; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; background:var(--bg); color:var(--ink); font-size:16px; line-height:1.55; }
-  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 16px; position:sticky; top:0; z-index:20; }
+  header { background:#0b0b10; border-bottom:1px solid var(--line); padding:14px 16px; position:sticky; top:0; z-index:20; }
   header h1 { margin:0; font-size:20px; }
   header p { margin:2px 0 0; color:var(--sub); font-size:12px; }
   nav.tabs { display:flex; gap:8px; margin-top:10px; }
-  nav.tabs button { flex:1; padding:9px; border:1px solid var(--line); background:#fff; border-radius:10px; font-size:15px; cursor:pointer; }
-  nav.tabs button.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+  nav.tabs button { flex:1; padding:9px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; font-size:15px; cursor:pointer; }
+  nav.tabs button.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 12px rgba(217,70,239,.45); }
   main { max-width:860px; margin:0 auto; padding:14px; }
-  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
   .card h2 { font-size:16px; margin:0 0 10px; }
   .card h3 { font-size:14px; margin:14px 0 6px; color:var(--ink); }
   label { font-size:13px; color:var(--sub); display:block; margin-bottom:4px; }
-  input[type=date], input[type=text], input[type=number], select { padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--ink); }
+  input[type=date], input[type=text], input[type=number], select { padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#0f0f16; color:var(--ink); }
   .chips { display:flex; flex-wrap:wrap; gap:8px; }
-  .chipbtn { border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 14px; font-size:14px; cursor:pointer; }
-  .chipbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .chipbtn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:999px; padding:7px 14px; font-size:14px; cursor:pointer; }
+  .chipbtn.active { background:#1d1024; border-color:var(--accent); color:#fff; box-shadow:0 0 10px rgba(217,70,239,.4); }
   .racegrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:8px; }
-  .racebtn { border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 4px; cursor:pointer; text-align:center; }
-  .racebtn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .racebtn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:8px 4px; cursor:pointer; text-align:center; }
+  .racebtn.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 10px rgba(217,70,239,.4); }
   .racebtn small { display:block; color:inherit; opacity:.75; font-size:11px; }
-  .primarybtn { width:100%; padding:13px; background:var(--red); color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:12px; }
-  .primarybtn:disabled { background:#cbd5e1; cursor:default; }
+  .primarybtn { width:100%; padding:13px; background:var(--red); color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:12px; box-shadow:0 0 14px rgba(239,68,68,.35); }
+  .primarybtn:disabled { background:#3f3f46; cursor:default; box-shadow:none; }
   .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; font-weight:700; }
-  .badge.shoubu { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
-  .badge.skip { background:#f1f5f9; color:#475569; border:1px solid var(--line); }
-  .badge.hit { background:#dcfce7; color:#166534; border:1px solid #86efac; }
-  .car { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; font-weight:700; font-size:14px; border:1px solid #94a3b8; vertical-align:-6px; margin-right:2px; }
-  .formation { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:15px; margin:6px 0; }
+  .badge.shoubu { background:#450a0a; color:#fca5a5; border:1px solid #ef4444; }
+  .badge.skip { background:#1f2937; color:#9ca3af; border:1px solid var(--line); }
+  .badge.hit { background:#052e16; color:#4ade80; border:1px solid #22c55e; }
+  .badge.ana { background:#450a0a; color:#fecaca; border:1px solid #ef4444; box-shadow:0 0 10px rgba(239,68,68,.65); }
+  .car { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:7px; font-weight:800; font-size:14px; border:1px solid #3f3f46; vertical-align:-7px; margin-right:2px; }
+  .formation { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:15px; margin:6px 0; border-left:4px solid var(--purple); background:#191922; border-radius:8px; padding:8px 10px; }
   .formation .pos { color:var(--sub); font-size:13px; }
   .formation .arrow { color:var(--sub); }
   table { width:100%; border-collapse:collapse; font-size:13.5px; }
   th, td { border:1px solid var(--line); padding:6px 5px; text-align:center; }
-  th { background:#f1f5f9; font-weight:600; }
+  th { background:#1c1c26; font-weight:600; }
   td.name { text-align:left; }
-  .tap { cursor:pointer; text-decoration:underline dotted #94a3b8; }
+  .tap { cursor:pointer; text-decoration:underline dotted #6b7280; }
   .tblwrap { overflow-x:auto; }
   .note { font-size:12px; color:var(--sub); }
-  .ev-good { color:#b91c1c; font-weight:700; }
+  .odds { color:var(--amber); font-weight:800; }
+  .ev-good { color:var(--green); font-weight:700; }
   .marks { display:flex; flex-wrap:wrap; gap:10px; }
-  .markbox { border:1px solid var(--line); border-radius:10px; padding:8px 10px; min-width:118px; background:#fff; }
+  .markbox { border:1px solid var(--line); border-radius:10px; padding:8px 10px; min-width:118px; background:#1a1a24; }
   .markbox .mk { font-size:18px; font-weight:800; }
   .lines { display:flex; flex-direction:column; gap:6px; }
   .line-row { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
   .line-row .role { font-size:11px; color:var(--sub); margin-right:6px; }
-  .hist-item { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; background:#fff; }
+  .hist-item { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; background:var(--card); }
   .hist-item .row { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center; }
-  .smallbtn { border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  .smallbtn { border:1px solid var(--line); background:#1a1a24; color:var(--ink); border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
   .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
-  .stat { border:1px solid var(--line); border-radius:12px; padding:10px; background:#fff; text-align:center; }
+  .stat { border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--card); text-align:center; }
   .stat .v { font-size:22px; font-weight:800; }
   .stat .k { font-size:12px; color:var(--sub); }
-  #modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:50; }
-  #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; border-radius:14px; width:min(520px,92vw); max-height:84vh; overflow:auto; padding:16px; }
+  #modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.72); display:none; z-index:50; }
+  #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:14px; width:min(520px,92vw); max-height:84vh; overflow:auto; padding:16px; }
   .bar-row { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:13px; }
-  .bar-track { flex:1; background:#f1f5f9; border-radius:6px; height:14px; }
-  .bar-fill { background:var(--accent); height:14px; border-radius:6px; }
+  .bar-track { flex:1; background:#26262e; border-radius:6px; height:14px; }
+  .bar-fill { background:var(--accent2); height:14px; border-radius:6px; }
   .bar-row.me .bar-fill { background:var(--red); }
   .plantabs { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0; }
-  .plantab { border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 13px; font-size:14px; cursor:pointer; }
-  .plantab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .plantab .chosen { font-size:11px; font-weight:700; color:var(--red); }
-  .plantab.active .chosen { color:#fecaca; }
+  .plantab { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:999px; padding:7px 13px; font-size:14px; cursor:pointer; }
+  .plantab.active { background:#1d1024; border-color:var(--accent); color:#fff; box-shadow:0 0 10px rgba(217,70,239,.4); }
+  .plantab .chosen { font-size:11px; font-weight:700; color:#f87171; }
+  .plantab.active .chosen { color:#fca5a5; }
   .plan-notation { font-size:22px; font-weight:800; letter-spacing:1px; margin:4px 0; }
   .plan-meta { display:flex; gap:14px; flex-wrap:wrap; font-size:14px; margin:6px 0; }
-  .choosebtn { padding:10px 18px; background:var(--accent); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; margin:10px 0 4px; }
-  .choosebtn.chosen { background:#f1f5f9; color:#475569; border:1px solid var(--line); cursor:default; }
-  .err { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px; }
+  .choosebtn { padding:10px 18px; background:var(--accent2); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; margin:10px 0 4px; }
+  .choosebtn.chosen { background:#1f2937; color:#9ca3af; border:1px solid var(--line); cursor:default; }
+  .logictabs { display:flex; gap:8px; margin-bottom:14px; }
+  .logictab { flex:1; padding:11px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; }
+  .logictab.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 14px rgba(217,70,239,.5); }
+  .card.ana-shoubu { border:2px solid #ef4444; box-shadow:0 0 22px rgba(239,68,68,.55); background:linear-gradient(180deg,#2b0d13,#15151d); }
+  .srow { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; border-left:4px solid var(--purple); background:#191922; border-radius:8px; padding:8px 10px; margin:6px 0; }
+  .err { color:#fca5a5; background:#450a0a; border:1px solid #7f1d1d; border-radius:10px; padding:10px; }
   .loading { color:var(--sub); }
   a { color:var(--accent); }
 </style>
@@ -112,8 +119,9 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const CAR_COLORS = {1:['#ffffff','#111'],2:['#111111','#fff'],3:['#e60012','#fff'],4:['#0055a4','#fff'],5:['#ffd400','#111'],6:['#009944','#fff'],7:['#f39800','#fff'],8:['#e85298','#fff'],9:['#7e318e','#fff']};
-const carChip = (n) => { const c = CAR_COLORS[n] || ['#e2e8f0','#111']; return `<span class="car" style="background:${c[0]};color:${c[1]}">${n}</span>`; };
+const CAR_COLORS = {1:['#ffffff','#111111','#9ca3af'],2:['#111111','#ffffff','#6b7280'],3:['#e11d48','#ffffff'],4:['#2563eb','#ffffff'],5:['#facc15','#111111'],6:['#16a34a','#ffffff'],7:['#f97316','#ffffff'],8:['#ec4899','#ffffff'],9:['#9333ea','#ffffff']};
+const carChip = (n) => { const c = CAR_COLORS[n] || ['#26262e','#e5e7eb']; return `<span class="car" style="background:${c[0]};color:${c[1]};border-color:${c[2]||'#3f3f46'}">${n}</span>`; };
+const comboChips = (combo) => String(combo).split('-').map(n=>carChip(+n)).join('<span style="color:var(--sub)">-</span>');
 const MARKS = [['honmei','◎'],['taikou','○'],['tanana','▲']];
 let sel = { date:'', venue:null, raceNo:null };
 let currentRec = null;
@@ -182,7 +190,7 @@ function formationHtml(rec, isShoubu){
 function ticketTable(details){
   if (!details || !details.length) return '';
   return `<div class="tblwrap"><table><tr><th>買い目</th><th>オッズ</th><th>モデル確率</th><th>想定回収率</th></tr>` +
-    details.map(d=>`<tr><td style="font-weight:700">${esc(d.combo)}</td><td>${d.odds!=null?d.odds:'―'}</td><td>${d.prob}%</td><td class="${d.ev>=120?'ev-good':''}">${d.ev!=null?d.ev+'%':'―'}</td></tr>`).join('') + '</table></div>';
+    details.map(d=>`<tr><td style="font-weight:700">${comboChips(d.combo)}</td><td class="odds">${d.odds!=null?d.odds:'―'}</td><td>${d.prob}%</td><td class="${d.ev>=120?'ev-good':''}">${d.ev!=null?d.ev+'%':'―'}</td></tr>`).join('') + '</table></div>';
 }
 // ---------- フォーメーションプラン ----------
 function plansHtml(rec){
@@ -228,6 +236,51 @@ async function choosePlan(recId, planId){
   } catch(e){ alert(e.message); }
 }
 
+// ---------- ロジック切替（推奨 / S式） ----------
+function logicTabsHtml(rec){
+  const logic = rec.logic || 'suisho';
+  const sCount = (rec.sTickets || []).length;
+  return `<div class="logictabs">
+    <button class="logictab ${logic==='suisho'?'active':''}" onclick="selectLogic(${rec.id},'suisho')">推奨</button>
+    <button class="logictab ${logic==='s'?'active':''}" onclick="selectLogic(${rec.id},'s')">S式（穴党）${sCount?` ${sCount}点`:''}</button>
+  </div>`;
+}
+async function selectLogic(recId, logic){
+  try {
+    const r = await (await fetch(`/api/predictions/${recId}/logic`, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ logic }) })).json();
+    if (!r.ok) throw new Error(r.error || 'ロジックの保存に失敗しました');
+    currentRec = r.prediction;
+    if (window._history){ const i = window._history.findIndex(x=>x.id===recId); if (i>=0) window._history[i] = r.prediction; }
+    $('#result-area').innerHTML = renderPrediction(r.prediction);
+  } catch(e){ alert(e.message); }
+}
+// ---------- 穴狙い（新ルール） ----------
+function anaHtml(rec){
+  const ana = rec.anaTickets || [];
+  if (!ana.length) return '';
+  const shoubu = !!rec.anaShoubu;
+  let h = `<div class="card${shoubu?' ana-shoubu':''}"><h2>🕳 穴狙い（最大4点）${shoubu?' <span class="badge ana">🔥 穴勝負サイン</span>':''}</h2>
+    <p class="note">伏兵を含む組み合わせを、EV一辺倒ではなく確率×min(EV,3)のバランス指標で選定（条件: 確率0.3%以上・オッズ500倍以下・EV115%以上）。検証（2024年約16,000レース、オッズは得点ベース市場モデルの近似）: 旧ルール 的中8.8〜10.2%／回収率61〜62% → 新ルール 的中12.8〜13.4%／回収率約73%。</p>`;
+  if (shoubu) h += `<p style="color:#fca5a5">🔥 <b>穴勝負サイン</b>: 穴セットの合計確率5%以上＆最大EV250%以上。サイン点灯レースでは穴狙いの回収率92〜98%・的中約18%でした（2024年検証・オッズ近似）。</p>`;
+  h += ana.map(t=>`<p>${comboChips(t.combo)} オッズ <span class="odds">${t.odds}倍</span> ／ 確率 ${t.prob}% ／ 想定回収率 <span class="ev-good">${t.ev}%</span><br><span class="note">${esc(t.reason||'')}</span></p>`).join('') + `</div>`;
+  return h;
+}
+// ---------- S式（穴党） ----------
+function sHtml(rec){
+  let h = `<div class="card"><h2>🎯 S式（穴党）</h2>
+    <p class="note">◎以外の3着内スコア4位以内の伏兵を最低1人含む組み合わせを、確率×min(EV,3)のバランス指標で最大10点（条件: 確率0.25%以上・オッズ600倍以下・EV100%以上）。検証（2024年・オッズ近似）: 的中率約30%／回収率72〜76%。</p>`;
+  if (rec.sTickets === undefined){ h += `<p>この予想ではS式は生成されていません（旧形式の記録です）。</p></div>`; return h; }
+  if (rec.oddsStatus !== 'ok'){ h += `<p>オッズ取得不可のためS式は表示できません</p></div>`; return h; }
+  const s = rec.sTickets || [];
+  if (!s.length){ h += `<p>条件に合う買い目がありませんでした。</p></div>`; return h; }
+  const totalProb = rec.sTotalProb != null ? rec.sTotalProb : +s.reduce((a,t)=>a+(t.prob||0),0).toFixed(1);
+  h += `<div class="plan-meta"><span>点数 <b>${s.length}点</b></span><span>合計モデル確率 <b>${totalProb}%</b></span>${rec.actualResult?`<span class="badge ${rec.sHit?'hit':''}">${rec.sHit?'S式的中🎯':'S式は不的中'}</span>`:''}</div>`;
+  h += s.map(t=>`<div class="srow"><div>${comboChips(t.combo)}</div><div>オッズ <span class="odds">${t.odds}倍</span> ／ 確率 ${t.prob}% ／ 想定回収率 <span class="${t.ev>=120?'ev-good':''}">${t.ev}%</span><br><span class="note">${esc(t.reason||'')}</span></div></div>`).join('');
+  h += `</div>`;
+  return h;
+}
+
 function renderPrediction(rec){
   const isShoubu = !!rec.isShoubu;
   const primaryDetails = isShoubu ? (rec.shoubuTicketDetails || []) : (rec.ticketDetails || []);
@@ -244,6 +297,7 @@ function renderPrediction(rec){
     <div style="margin:8px 0">${isShoubu
       ? `<span class="badge shoubu">🔥 勝負レース（◎予想勝率 ${rec.honmeiWinProb}%）</span>`
       : `<span class="badge skip">見送り推奨（◎予想勝率 ${rec.honmeiWinProb}% ＜ 55%）</span>`}
+      ${rec.anaShoubu ? `<span class="badge ana">🔥 穴勝負</span>`:''}
       ${rec.actualResult ? `<span class="badge ${rec.isHit?'hit':''}">結果 ${esc(rec.actualResult)} ${rec.isHit?'的中🎯':'―'}</span>`:''}</div>
     <div class="marks">${MARKS.map(([k,mk])=>`<div class="markbox"><span class="mk">${mk}</span> ${carChip(rec[k])} ${esc(markName(rec, rec[k]))}<br><span class="note">勝率予想 ${(riders.find(r=>r.carNo===rec[k])||{}).winProb ?? ''}%</span></div>`).join('')}
       ${(rec.ana||[])[0]?`<div class="markbox"><span class="mk">△</span> ${carChip(rec.ana[0])} ${esc(markName(rec, rec.ana[0]))}</div>`:''}</div>
@@ -254,12 +308,10 @@ function renderPrediction(rec){
     <p class="note">${rec.oddsStatus==='ok' ? `オッズ: ${esc(rec.oddsTime||'')}（${rec.oddsCount}通り取得）` : 'オッズ: 取得不可のため想定回収率は表示できません'}</p>
     <p class="note">勝負レースモード検証（フォーメーション版）: 2024年5〜8月 回収率105.1%／9〜12月 120.0%。月によるばらつきがあり、100%超を保証するものではありません。</p>
   </div>`;
-  h += plansHtml(rec);
-  if ((rec.anaTickets||[]).length){
-    h += `<div class="card"><h2>🕳 穴狙い（割安さ狙い・最大4点）</h2>
-      <p class="note">当たりやすさではなく、オッズに対してモデル評価が割安な組み合わせの提示です。</p>` +
-      rec.anaTickets.map(t=>`<p><b>${esc(t.combo)}</b> オッズ ${t.odds}倍 ／ 確率 ${t.prob}% ／ 想定回収率 <span class="ev-good">${t.ev}%</span><br><span class="note">${esc(t.reason||'')}</span></p>`).join('') + `</div>`;
-  }
+  const logic = rec.logic || 'suisho';
+  h += logicTabsHtml(rec);
+  h += `<div id="pane-suisho" style="display:${logic==='suisho'?'':'none'}">` + plansHtml(rec) + anaHtml(rec) + `</div>`;
+  h += `<div id="pane-s" style="display:${logic==='s'?'':'none'}">` + sHtml(rec) + `</div>`;
   if (rec.wind){
     const w = rec.wind;
     h += `<div class="card"><h2>🌬 風（推定）</h2>
@@ -359,9 +411,11 @@ async function loadHistory(){
       <div class="hist-item"><div class="row">
         <div><b>${esc(p.raceDate)} ${esc(p.venueName)} ${p.raceNo}R</b> ${esc(p.raceClass||'')}
           ${p.isShoubu?'<span class="badge shoubu">勝負</span>':'<span class="badge skip">見送り</span>'}
+          ${p.anaShoubu?'<span class="badge ana">🔥 穴勝負</span>':''}
           ${p.actualResult?`<span class="badge ${p.isHit?'hit':''}">結果 ${esc(p.actualResult)}${p.isHit?' 的中🎯':''}</span>`:''}<br>
-          <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou||'―'} ▲${p.tanana||'―'} △${(p.ana||[])[0]||'―'}（◎勝率 ${p.honmeiWinProb}%）</span>
-          ${p.chosenPlan?`<br><span class="note">選択プラン: <b>${esc(p.chosenPlan.name)}</b>（${(p.chosenPlan.combos||[]).length}点）${p.actualResult?(p.isChosenPlanHit?' 的中🎯':' 不的中'):''}</span>`:''}</div>
+          <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou?carChip(p.taikou):'―'} ▲${p.tanana?carChip(p.tanana):'―'} △${(p.ana||[])[0]?carChip((p.ana||[])[0]):'―'}（◎勝率 ${p.honmeiWinProb}%）</span>
+          ${p.chosenPlan?`<br><span class="note">選択プラン: <b>${esc(p.chosenPlan.name)}</b>（${(p.chosenPlan.combos||[]).length}点）${p.actualResult?(p.isChosenPlanHit?' 的中🎯':' 不的中'):''}</span>`:''}
+          ${p.logic==='s'?`<br><span class="note">選択ロジック: <b>S式（穴党）</b>（${(p.sTickets||[]).length}点）${p.actualResult?(p.sHit?' 的中🎯':' 不的中'):''}</span>`:''}</div>
         <div><button class="smallbtn" onclick="showHistoryDetail(${p.id})">詳細</button></div>
       </div>
       <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">
