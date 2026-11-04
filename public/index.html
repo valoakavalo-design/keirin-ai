@@ -129,7 +129,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CAR_COLORS = {1:['#ffffff','#111111','#9ca3af'],2:['#111111','#ffffff','#6b7280'],3:['#e11d48','#ffffff'],4:['#2563eb','#ffffff'],5:['#facc15','#111111'],6:['#16a34a','#ffffff'],7:['#f97316','#ffffff'],8:['#ec4899','#ffffff'],9:['#9333ea','#ffffff']};
 const carChip = (n) => { const c = CAR_COLORS[n] || ['#26262e','#e5e7eb']; return `<span class="car" style="background:${c[0]};color:${c[1]};border-color:${c[2]||'#3f3f46'}">${n}</span>`; };
-const comboChips = (combo) => String(combo).split('-').map(n=>carChip(+n)).join('<span style="color:var(--sub)">-</span>');
+const comboChips = (combo, sep) => String(combo).split('-').map(n=>carChip(+n)).join(sep==='=' ? '<span style="color:var(--sub);font-weight:800">＝</span>' : '<span style="color:var(--sub)">-</span>');
 const MARKS = [['honmei','◎'],['taikou','○'],['tanana','▲']];
 let sel = { date:'', venue:null, raceNo:null };
 let currentRec = null;
@@ -294,6 +294,29 @@ function sHtml(rec){
   return h;
 }
 
+// ---------- 期待値スポット（オッズの歪み狙い） ----------
+function evSpotsHtml(rec){
+  let h = `<div class="card"><h2>🎯 期待値スポット（オッズの歪み狙い）</h2>`;
+  if (rec.evSpots === undefined){ h += `<p>この予想では期待値スポットは生成されていません（旧形式の記録です）。</p></div>`; return h; }
+  const spots = rec.evSpots || [];
+  const totalProb = +spots.reduce((s,t)=>s+(t.prob||0),0).toFixed(1);
+  h += `<p class="note">3連単以外の券種（2車複・ワイド・2車単・3連複）で、モデル確率×実オッズ（EV）115%以上の組み合わせを、確率×min(EV,3)のバランス指標で最大3点。ワイドのオッズは表示レンジの下限で計算しています。</p>
+    <p class="note">2024年検証（オッズ近似）: セット的中 約38〜40%／回収率 75〜76%。歪み候補の提示であり、回収率100%超を保証するものではありません</p>`;
+  if (!spots.length){
+    h += rec.evSpotOddsOk === false
+      ? `<p>オッズ取得不可のため、期待値スポットは表示できません。</p>`
+      : `<p>このレースに歪みスポットはありません（EV115%以上の組み合わせなし）</p>`;
+    h += `</div>`; return h;
+  }
+  h += `<div class="plan-meta"><span>点数 <b>${spots.length}点</b></span><span>合計モデル確率 <b>${totalProb}%</b></span>${rec.actualResult && rec.spotHit != null ? `<span class="badge ${rec.spotHit?'hit':''}">${rec.spotHit?'スポット的中🎯':'スポットは不的中'}</span>` : ''}</div>`;
+  h += spots.map(t=>{
+    const sep = t.type === '2shatan' ? '-' : '=';
+    return `<div class="srow"><div><span class="badge skip">${esc(t.betType||'')}</span><br><span style="display:inline-block;margin-top:5px">${comboChips(t.combo, sep)}</span></div><div>オッズ <span class="odds">${t.odds}倍</span> ／ 確率 ${t.prob}% ／ 想定回収率 <span class="ev-good">${t.ev}%</span>${rec.actualResult && t.hit != null ? ` <span class="badge ${t.hit?'hit':''}">${t.hit?'的中🎯':'不的中'}</span>` : ''}<br><span class="note">${esc(t.reason||'')}</span></div></div>`;
+  }).join('');
+  h += `</div>`;
+  return h;
+}
+
 // ---------- 予想タブ（出走表／詳細／買い目） ----------
 function selectPredTab(name){
   ['card','detail','kaime'].forEach(k=>{
@@ -342,6 +365,7 @@ function renderPrediction(rec){
   h += logicTabsHtml(rec);
   h += `<div id="pane-suisho" style="display:${logic==='suisho'?'':'none'}">` + plansHtml(rec) + anaHtml(rec) + `</div>`;
   h += `<div id="pane-s" style="display:${logic==='s'?'':'none'}">` + sHtml(rec) + `</div>`;
+  h += evSpotsHtml(rec);
   h += `</div>`;
   let cardHtml = '', bankHtml = '', windHtml = '', commentaryHtml = '';
   if (rec.wind){
@@ -440,7 +464,8 @@ async function loadHistory(){
       statBox('全体の的中率', s.primary.hitRate!=null ? s.primary.hitRate+'%' : '―') +
       statBox('全体の回収率', s.primary.roi!=null ? s.primary.roi+'%' : '―') +
       statBox('勝負レース的中率', s.shoubu.hitRate!=null ? s.shoubu.hitRate+'%（'+s.shoubu.n+'件）' : '―') +
-      statBox('勝負レース回収率', s.shoubu.roi!=null ? s.shoubu.roi+'%' : '―');
+      statBox('勝負レース回収率', s.shoubu.roi!=null ? s.shoubu.roi+'%' : '―') +
+      (s.spots ? statBox('期待値スポット的中率', s.spots.hitRate!=null ? s.spots.hitRate+'%（'+s.spots.n+'件）' : '―') : '');
     $('#history-area').innerHTML = (r.predictions||[]).map(p=>`
       <div class="hist-item"><div class="row">
         <div><b>${esc(p.raceDate)} ${esc(p.venueName)} ${p.raceNo}R</b> ${esc(p.raceClass||'')}
@@ -449,7 +474,8 @@ async function loadHistory(){
           ${p.actualResult?`<span class="badge ${p.isHit?'hit':''}">結果 ${esc(p.actualResult)}${p.isHit?' 的中🎯':''}</span>`:''}<br>
           <span>◎${carChip(p.honmei)}${esc(markName(p,p.honmei))} ○${p.taikou?carChip(p.taikou):'―'} ▲${p.tanana?carChip(p.tanana):'―'} △${(p.ana||[])[0]?carChip((p.ana||[])[0]):'―'}（◎勝率 ${p.honmeiWinProb}%）</span>
           ${p.chosenPlan?`<br><span class="note">選択プラン: <b>${esc(p.chosenPlan.name)}</b>（${(p.chosenPlan.combos||[]).length}点）${p.actualResult?(p.isChosenPlanHit?' 的中🎯':' 不的中'):''}</span>`:''}
-          ${p.logic==='s'?`<br><span class="note">選択ロジック: <b>S式（穴党）</b>（${(p.sTickets||[]).length}点）${p.actualResult?(p.sHit?' 的中🎯':' 不的中'):''}</span>`:''}</div>
+          ${p.logic==='s'?`<br><span class="note">選択ロジック: <b>S式（穴党）</b>（${(p.sTickets||[]).length}点）${p.actualResult?(p.sHit?' 的中🎯':' 不的中'):''}</span>`:''}
+          ${(p.evSpots||[]).length?`<br><span class="note">期待値スポット: <b>${p.evSpots.length}点</b>（${p.evSpots.map(t=>esc(t.betType||'')).join('・')}）${p.actualResult?(p.spotHit?' <b>スポット的中🎯</b>':' 不的中'):''}</span>`:''}</div>
         <div><button class="smallbtn" onclick="showHistoryDetail(${p.id})">詳細</button></div>
       </div>
       <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">
