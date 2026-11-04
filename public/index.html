@@ -90,6 +90,37 @@
   .srow { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; border-left:4px solid var(--purple); background:#191922; border-radius:8px; padding:8px 10px; margin:6px 0; }
   .err { color:#fca5a5; background:#450a0a; border:1px solid #7f1d1d; border-radius:10px; padding:10px; }
   .loading { color:var(--sub); }
+  .modebar { display:flex; gap:8px; margin-bottom:14px; }
+  .modebar button { flex:1; padding:11px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; }
+  .modebar button.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 12px rgba(217,70,239,.5); }
+  .cattabs { display:flex; gap:8px; margin-bottom:14px; }
+  .cattab { flex:1; padding:10px 4px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); color:var(--ink); font-size:15px; font-weight:700; cursor:pointer; }
+  .cattab.cat-arare { border-color:#ef4444; }
+  .cattab.cat-honmei { border-color:#22c55e; }
+  .cattab.cat-shoubu { border-color:#a855f7; }
+  .cattab.cat-fav { border-color:#eab308; }
+  .cattab.active { background:#16a34a; border-color:#16a34a; color:#fff; box-shadow:0 0 12px rgba(34,197,94,.45); }
+  .list-heading { text-align:center; font-size:18px; font-weight:800; margin:4px 0 8px; }
+  .list-heading-bar { width:44px; height:3px; background:var(--accent2); border-radius:2px; margin:0 auto 14px; }
+  .race-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  .race-card.started { opacity:.45; }
+  .rc-row1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .rc-title { font-size:20px; font-weight:800; }
+  .classpill { background:#bfdbfe; color:#1e40af; border-radius:6px; padding:2px 8px; font-size:12px; font-weight:700; }
+  .favbtn { background:none; border:none; font-size:22px; line-height:1; cursor:pointer; color:#6b7280; padding:2px 4px; }
+  .favbtn.on { color:#facc15; }
+  .deadline { margin-left:auto; font-weight:800; font-size:15px; white-space:nowrap; }
+  .deadline.soon { color:#ef4444; }
+  .deadline.done { color:var(--sub); font-weight:600; }
+  .rc-row2 { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:9px; font-size:14px; }
+  .jbadge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; font-weight:700; border:1px solid var(--line); }
+  .jb-honmei { background:#052e16; color:#4ade80; border-color:#22c55e; }
+  .jb-yori { background:#0f2417; color:#86efac; border-color:#166534; }
+  .jb-konsen { background:#450a0a; color:#fca5a5; border-color:#ef4444; }
+  .jb-yosumi { background:#1f2937; color:#9ca3af; }
+  .mval { font-weight:800; font-size:16px; }
+  .c-green { color:#4ade80; } .c-orange { color:#fb923c; } .c-red { color:#f87171; }
+  .kaimebtn { margin-left:auto; border:1.5px solid #ef4444; color:#fca5a5; background:transparent; border-radius:10px; padding:8px 14px; font-size:14px; font-weight:700; cursor:pointer; white-space:nowrap; }
   a { color:var(--accent); }
 </style>
 </head>
@@ -104,7 +135,12 @@
 </header>
 <main>
   <section id="view-predict">
-    <div class="card">
+    <div class="modebar">
+      <button id="mode-list" class="active" onclick="showMode('list')">📋 レース一覧（次走）</button>
+      <button id="mode-picker" onclick="showMode('picker')">🏟 場・レースを選ぶ</button>
+    </div>
+    <div id="list-area"></div>
+    <div class="card" id="picker-card" style="display:none">
       <h2>レースを選ぶ</h2>
       <label>日付</label>
       <input type="date" id="date-input">
@@ -502,11 +538,112 @@ async function saveResult(id){
   loadHistory();
 }
 
+// ---------- レース一覧（次走レース） ----------
+let viewMode = 'list';
+let curCat = 'honmei'; // 既定カテゴリは「本命」
+let raceListData = null;
+let listLoading = false;
+const FAV_KEY = 'keirin-fav-races';
+let favs = (()=>{ try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); } catch { return new Set(); } })();
+function saveFavs(){ try { localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); } catch {} }
+function favKeyOf(r){ return `${sel.date}|${r.venueSlug}|${r.raceNo}`; }
+function showMode(m){
+  viewMode = m;
+  $('#list-area').style.display = m === 'list' ? '' : 'none';
+  $('#picker-card').style.display = m === 'picker' ? '' : 'none';
+  $('#mode-list').classList.toggle('active', m === 'list');
+  $('#mode-picker').classList.toggle('active', m === 'picker');
+  if (m === 'list' && !raceListData) loadRaceList();
+}
+async function loadRaceList(){
+  if (listLoading) return;
+  listLoading = true;
+  const forDate = sel.date;
+  $('#list-area').innerHTML = '<div class="card"><p class="loading">全レース分析中…（この日の全レースの出走表を取得してモデルv2で採点しています。初回は1分ほどかかることがあります）</p></div>';
+  try {
+    const r = await (await fetch(`/api/races/analyze?date=${forDate}`)).json();
+    if (!r.ok) throw new Error(r.error || '取得失敗');
+    if (sel.date !== forDate) return; // 日付が切り替わっていたら破棄
+    raceListData = r;
+    renderRaceList();
+  } catch(e){
+    if (sel.date === forDate) $('#list-area').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+  listLoading = false;
+}
+function selectCat(k){ curCat = k; renderRaceList(); }
+function toggleFav(key){
+  if (favs.has(key)) favs.delete(key); else favs.add(key);
+  saveFavs();
+  renderRaceList();
+}
+function listStartMs(r){
+  if (!r.startTime) return Infinity;
+  const [h, m] = r.startTime.split(':').map(Number);
+  return new Date(`${sel.date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+09:00`).getTime();
+}
+const shoubuColor = (v) => v >= 58 ? 'c-green' : (v >= 40 ? 'c-orange' : 'c-red');
+const arareColor = (v) => v < 40 ? 'c-green' : (v <= 55 ? 'c-orange' : 'c-red');
+const badgeClass = (b) => b === '本命堅い' ? 'jb-honmei' : b === '混戦' ? 'jb-konsen' : b === '本命寄り' ? 'jb-yori' : 'jb-yosumi';
+function renderRaceList(){
+  const d = raceListData; if (!d) return;
+  const now = Date.now();
+  const races = [...(d.races || [])].sort((a, b) => ((listStartMs(a) <= now) - (listStartMs(b) <= now)) || (listStartMs(a) - listStartMs(b)));
+  const counts = { arare: d.counts.arare, honmei: d.counts.honmei, shoubu: d.counts.shoubu, fav: races.filter(r => favs.has(favKeyOf(r))).length };
+  const cats = [['arare', '荒れ'], ['honmei', '本命'], ['shoubu', '勝負'], ['fav', '★']];
+  let h = `<div class="cattabs">` + cats.map(([k, label]) =>
+    `<button class="cattab cat-${k} ${curCat === k ? 'active' : ''}" onclick="selectCat('${k}')">${label}(${counts[k]})</button>`).join('') + `</div>`;
+  h += `<div class="list-heading">次走レース</div><div class="list-heading-bar"></div>`;
+  const match = (r) => curCat === 'honmei' ? r.topWinProb >= 45
+    : curCat === 'arare' ? r.arareDo >= 50
+    : curCat === 'shoubu' ? !!r.shoubu
+    : favs.has(favKeyOf(r));
+  const list = races.filter(match);
+  // 赤い「締切◯分前」は、表示中カテゴリの中で最も近い未発走レースに付ける
+  let nearest = null, nearestMs = Infinity;
+  for (const r of list){ const t = listStartMs(r); if (t > now && t < nearestMs){ nearestMs = t; nearest = r; } }
+  if (!races.length) h += `<div class="card"><p>この日のレースを取得できませんでした（出走表がまだ発表されていない可能性があります）。</p></div>`;
+  else if (!list.length) h += `<div class="card"><p>このカテゴリに該当するレースはありません。</p></div>`;
+  h += list.map(r => {
+    const key = favKeyOf(r);
+    const isFav = favs.has(key);
+    const started = listStartMs(r) <= now;
+    let dl;
+    if (started) dl = `<span class="deadline done">発走済</span>`;
+    else if (r === nearest){ const mins = Math.max(0, Math.round((nearestMs - now) / 60000)); dl = `<span class="deadline soon">🔴 締切${mins}分前</span>`; }
+    else dl = `<span class="deadline">締切 ${esc(r.startTime || '―')}</span>`;
+    return `<div class="race-card ${started ? 'started' : ''}">
+      <div class="rc-row1"><span class="rc-title">${esc(r.venueName)} ${r.raceNo}R</span>
+        ${r.raceClass ? `<span class="classpill">${esc(r.raceClass)}</span>` : ''}
+        ${r.weather ? `<span>${esc(r.weather)}</span>` : ''}
+        <button class="favbtn ${isFav ? 'on' : ''}" onclick="toggleFav('${key}')" aria-label="お気に入り">${isFav ? '★' : '☆'}</button>
+        ${dl}</div>
+      <div class="rc-row2">
+        ${r.dayIndex ? `<span class="note" style="font-size:13px">${r.dayIndex}日目</span>` : ''}
+        <span class="jbadge ${badgeClass(r.badge)}">${esc(r.badge)}</span>
+        <span>荒れ度 <span class="mval ${arareColor(r.arareDo)}">${r.arareDo}</span></span>
+        <span>勝負度 <span class="mval ${shoubuColor(r.shoubuDo)}">${r.shoubuDo}</span></span>
+        <button class="kaimebtn" onclick="openRaceFromList('${r.venueSlug}','${r.kaisaiDateId}',${r.raceNo})">買い目を見る</button>
+      </div></div>`;
+  }).join('');
+  h += `<p class="note">勝負度＝◎の予想勝率（モデルv2）。荒れ度＝100−（予想勝率1位＋2位）。バッジ: 本命堅い＝勝率55%以上／混戦＝荒れ度55超／本命寄り＝勝率45%以上／様子見＝その他。カテゴリ: 本命＝勝率45%以上、荒れ＝荒れ度50以上、勝負＝勝率55%以上（勝負レース判定と同じ）。締切の時刻は締切時刻そのものの取得手段がないため発走予定時刻を表示しています（実際の締切は発走の数分前です）。天気は発走時刻のOpen-Meteo予報です。</p>`;
+  $('#list-area').innerHTML = h;
+}
+async function openRaceFromList(slug, kaisaiDateId, raceNo){
+  showMode('picker');
+  const idx = (window._venues || []).findIndex(v => v.venueSlug === slug && v.kaisaiDateId === kaisaiDateId);
+  if (idx >= 0){ await selectVenue(idx); selectRace(raceNo); } // selectRace が予想まで実行する
+  else { sel.venue = { venueSlug: slug, kaisaiDateId }; sel.raceNo = raceNo; doPredict(); }
+}
+// 締切までの分数・発走済の表示を1分ごとに更新（再取得はしない）
+setInterval(() => { if (viewMode === 'list' && raceListData && $('#view-predict').style.display !== 'none') renderRaceList(); }, 60000);
+
 // init
 $('#date-input').value = todayJST();
 sel.date = $('#date-input').value;
-$('#date-input').addEventListener('change', e=>{ sel.date = e.target.value; loadVenues(); });
+$('#date-input').addEventListener('change', e=>{ sel.date = e.target.value; curCat = 'honmei'; raceListData = null; showMode('list'); loadVenues(); });
 loadVenues();
+loadRaceList();
 </script>
 </body>
 </html>
