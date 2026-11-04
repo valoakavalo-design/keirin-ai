@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const kdreams = require('./lib/kdreams');
 const model = require('./lib/model');
-const { getWind } = require('./lib/wind');
+const { getWind, getWeather } = require('./lib/wind');
 const venuesMaster = require('./venues.json');
 
 const PORT = process.env.PORT || 3000;
@@ -185,6 +185,123 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
   return rec;
 }
 
+// ---------- 次走レース一覧（全レース一括分析） ----------
+// 出走表のみからモデルv2で採点する（オッズは取得しない。オッズ/EV/穴狙いは各レースを開いた時に計算）。
+// 勝負度 = ◎の予想勝率、荒れ度 = 100 −（予想勝率1位＋2位）。定義は画面の注記にも明示する。
+const analyzeMemCache = new Map(); // date -> data
+const analyzeInflight = new Map(); // date -> Promise<data>
+const ANALYZE_TTL_MS = 30 * 60 * 1000; // 当日・未来日は30分で再計算（出走表の後出し・欠場変更に追随）。過去日は固定
+
+function todayJST() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); }
+function raceStartMs(dateStr, startTime) {
+  if (!startTime) return null;
+  const [h, m] = startTime.split(':').map(Number);
+  return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+09:00`).getTime();
+}
+function badgeFor(topWinProb, arareDo) {
+  if (topWinProb >= 55) return '本命堅い';
+  if (arareDo > 55) return '混戦';
+  if (topWinProb >= 45) return '本命寄り';
+  return '様子見';
+}
+async function pool(items, size, fn) {
+  const out = new Array(items.length);
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (idx < items.length) { const k = idx++; out[k] = await fn(items[k], k); }
+  });
+  await Promise.all(workers);
+  return out;
+}
+// 1レース分: その日の予想記録が既にあればその◎勝率を再利用し、なければ出走表を取得して採点する。
+// 出走表が取れないレースは null（呼び出し側で静かに除外）。
+async function analyzeOneRace(date, venue, venueName, raceMeta) {
+  let top = null, second = null;
+  const saved = store.predictions.find(p => p.raceDate === date && p.venueSlug === venue.venueSlug && p.raceNo === raceMeta.raceNo && p.honmeiWinProb != null);
+  if (saved) {
+    const probs = (saved.riders || []).map(r => r.winProb).filter(v => v != null).sort((a, b) => b - a);
+    if (probs.length >= 2) { top = saved.honmeiWinProb; second = probs[1]; }
+  }
+  if (top == null) {
+    const detail = await kdreams.getRaceDetail(venue.venueSlug, venue.kaisaiDateId, raceMeta.raceNo);
+    if (!detail.riders || detail.riders.length < 5) return null;
+    model.scoreAll(detail.riders, detail.lines);
+    const probs = detail.riders.map(r => r.winProb).sort((a, b) => b - a);
+    top = probs[0]; second = probs[1];
+  }
+  const arareDo = +(100 - top - second).toFixed(1);
+  let weather = null, weatherCode = null;
+  try {
+    const w = await getWeather(venue.venueSlug, date, raceMeta.startTime);
+    if (w) { weather = w.label; weatherCode = w.code; }
+  } catch { /* 天気は任意表示 */ }
+  return {
+    venueSlug: venue.venueSlug, venueName, kaisaiDateId: venue.kaisaiDateId,
+    dayIndex: venue.dayIndex || null, // 節の○日目（kaisaiDateId 由来。無ければ null で表示しない）
+    raceNo: raceMeta.raceNo, raceClass: raceMeta.raceClass || '', startTime: raceMeta.startTime || '',
+    weather, weatherCode,
+    topWinProb: top, secondWinProb: second,
+    arareDo, shoubuDo: top, badge: badgeFor(top, arareDo), shoubu: top >= 55,
+  };
+}
+async function computeAnalyze(date) {
+  const venues = await kdreams.getVenues(date);
+  const infos = await pool(venues, 4, async v => {
+    try { return { v, info: await kdreams.getRaces(v.venueSlug, v.kaisaiDateId) }; }
+    catch { return { v, info: null }; }
+  });
+  const tasks = [];
+  for (const { v, info } of infos) {
+    if (!info) continue;
+    const venueName = (venuesMaster[v.venueSlug] || {}).name || info.venueName || v.venueSlug;
+    for (const rm of info.races) tasks.push({ v, venueName, rm });
+  }
+  const results = await pool(tasks, 5, async t => {
+    try { return await analyzeOneRace(date, t.v, t.venueName, t.rm); } catch { return null; }
+  });
+  return { date, generatedAt: new Date().toISOString(), races: results.filter(Boolean) };
+}
+async function getAnalyze(date) {
+  const fresh = (genAt) => date < todayJST() || (Date.now() - new Date(genAt).getTime() < ANALYZE_TTL_MS);
+  const mem = analyzeMemCache.get(date);
+  if (mem && fresh(mem.generatedAt)) return mem;
+  const file = path.join(DATA_DIR, `analyze-${date}.json`);
+  try {
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (j && Array.isArray(j.races) && j.races.length && fresh(j.generatedAt)) { analyzeMemCache.set(date, j); return j; }
+  } catch { /* キャッシュなし */ }
+  if (!analyzeInflight.has(date)) {
+    const pr = computeAnalyze(date).then(data => {
+      analyzeInflight.delete(date);
+      if (data.races.length) {
+        analyzeMemCache.set(date, data);
+        try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch { /* 保存失敗は無視 */ }
+      }
+      return data;
+    }).catch(e => { analyzeInflight.delete(date); throw e; });
+    analyzeInflight.set(date, pr);
+  }
+  return analyzeInflight.get(date);
+}
+function analyzePayload(data, date) {
+  const now = Date.now();
+  const races = data.races.map(r => {
+    const ms = raceStartMs(date, r.startTime);
+    return { ...r, started: ms != null && now >= ms };
+  });
+  // 未発走を発走時刻順に先へ、発走済は後ろへ
+  races.sort((a, b) => (a.started - b.started) || String(a.startTime || '99').localeCompare(String(b.startTime || '99')) || a.raceNo - b.raceNo);
+  return {
+    ok: true, date, generatedAt: data.generatedAt,
+    counts: {
+      honmei: races.filter(r => r.topWinProb >= 45).length,
+      arare: races.filter(r => r.arareDo >= 50).length,
+      shoubu: races.filter(r => r.shoubu).length,
+    },
+    races,
+  };
+}
+
 // ---------- ルーティング ----------
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
@@ -200,6 +317,12 @@ const server = http.createServer(async (req, res) => {
       if (!slug || !id) return sendJson(res, 400, { ok: false, error: 'venueSlug と kaisaiDateId が必要です' });
       const info = await kdreams.getRaces(slug, id);
       return sendJson(res, 200, { ok: true, ...info });
+    }
+    if (p === '/api/races/analyze') {
+      const date = u.searchParams.get('date');
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendJson(res, 400, { ok: false, error: 'date=YYYY-MM-DD が必要です' });
+      const data = await getAnalyze(date);
+      return sendJson(res, 200, analyzePayload(data, date));
     }
     if (p === '/api/predict' && req.method === 'POST') {
       const body = await readBody(req);
