@@ -27,6 +27,14 @@
   .racebtn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:8px 4px; cursor:pointer; text-align:center; }
   .racebtn.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 10px rgba(217,70,239,.4); }
   .racebtn small { display:block; color:inherit; opacity:.75; font-size:11px; }
+  .racechips { display:flex; gap:8px; overflow-x:auto; padding:4px 2px 8px; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+  .racechip { flex:0 0 auto; min-width:76px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:12px; padding:8px 12px; cursor:pointer; text-align:center; }
+  .racechip .rn { display:block; font-size:17px; font-weight:800; line-height:1.2; }
+  .racechip small { display:block; color:inherit; opacity:.75; font-size:11px; margin-top:2px; white-space:nowrap; }
+  .racechip.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 12px rgba(217,70,239,.5); }
+  .predtabs { display:flex; gap:8px; margin-bottom:14px; }
+  .predtab { flex:1; padding:11px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; }
+  .predtab.active { background:#1d1024; color:#fff; border-color:var(--accent); box-shadow:0 0 12px rgba(217,70,239,.5); }
   .primarybtn { width:100%; padding:13px; background:var(--red); color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:12px; box-shadow:0 0 14px rgba(239,68,68,.35); }
   .primarybtn:disabled { background:#3f3f46; cursor:default; box-shadow:none; }
   .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; font-weight:700; }
@@ -155,16 +163,20 @@ async function selectVenue(i){
     const r = await (await fetch(`/api/races?venueSlug=${sel.venue.venueSlug}&kaisaiDateId=${sel.venue.kaisaiDateId}`)).json();
     if (!r.ok) throw new Error(r.error || '取得失敗');
     window._meeting = r;
-    $('#race-area').innerHTML = `<label>${esc(r.grade||'')} ${esc(r.meetingTitle||'')} ― レース</label><div class="racegrid">` +
-      r.races.map(x=>`<button class="racebtn" data-r="${x.raceNo}" onclick="selectRace(${x.raceNo})">${x.raceNo}R<small>${esc(x.startTime)} ${esc(x.raceClass||'')}</small></button>`).join('') + '</div>';
+    $('#race-area').innerHTML = `<label>${esc(r.grade||'')} ${esc(r.meetingTitle||'')} ― レース（タップで予想）</label><div class="racechips">` +
+      r.races.map(x=>`<button class="racechip" data-r="${x.raceNo}" onclick="selectRace(${x.raceNo})"><span class="rn">${x.raceNo}R</span><small>${esc(x.startTime)}${x.raceClass?` ${esc(x.raceClass)}`:''}</small></button>`).join('') + '</div>';
   } catch(e){ $('#race-area').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 function selectRace(n){
   sel.raceNo = n;
-  document.querySelectorAll('#race-area .racebtn').forEach(b=>b.classList.toggle('active', +b.dataset.r===n));
+  document.querySelectorAll('#race-area .racechip').forEach(b=>b.classList.toggle('active', +b.dataset.r===n));
   $('#predict-btn').disabled = false;
+  doPredict();
 }
+let predicting = false;
 async function doPredict(){
+  if (predicting || !sel.venue || !sel.raceNo) return;
+  predicting = true;
   const btn = $('#predict-btn'); btn.disabled = true; btn.textContent = '出走表・オッズを取得して予想中…（30秒ほどかかります）';
   $('#predict-msg').innerHTML = '';
   try {
@@ -175,6 +187,7 @@ async function doPredict(){
     $('#result-area').innerHTML = renderPrediction(r.prediction);
     window.scrollTo({ top: $('#result-area').offsetTop - 80, behavior:'smooth' });
   } catch(e){ $('#predict-msg').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  predicting = false;
   btn.disabled = false; btn.textContent = 'このレースを予想する';
 }
 
@@ -281,6 +294,16 @@ function sHtml(rec){
   return h;
 }
 
+// ---------- 予想タブ（出走表／詳細／買い目） ----------
+function selectPredTab(name){
+  ['card','detail','kaime'].forEach(k=>{
+    const pane = document.getElementById('predpane-'+k);
+    if (pane) pane.style.display = k===name ? '' : 'none';
+    const btn = document.getElementById('predtab-'+k);
+    if (btn) btn.classList.toggle('active', k===name);
+  });
+}
+
 function renderPrediction(rec){
   const isShoubu = !!rec.isShoubu;
   const primaryDetails = isShoubu ? (rec.shoubuTicketDetails || []) : (rec.ticketDetails || []);
@@ -299,6 +322,13 @@ function renderPrediction(rec){
       : `<span class="badge skip">見送り推奨（◎予想勝率 ${rec.honmeiWinProb}% ＜ 55%）</span>`}
       ${rec.anaShoubu ? `<span class="badge ana">🔥 穴勝負</span>`:''}
       ${rec.actualResult ? `<span class="badge ${rec.isHit?'hit':''}">結果 ${esc(rec.actualResult)} ${rec.isHit?'的中🎯':'―'}</span>`:''}</div>
+</div>`;
+  h += `<div class="predtabs">
+    <button class="predtab" id="predtab-card" onclick="selectPredTab('card')">📋 出走表</button>
+    <button class="predtab" id="predtab-detail" onclick="selectPredTab('detail')">📝 詳細</button>
+    <button class="predtab active" id="predtab-kaime" onclick="selectPredTab('kaime')">🎯 買い目</button>
+  </div>`;
+  h += `<div id="predpane-kaime"><div class="card">
     <div class="marks">${MARKS.map(([k,mk])=>`<div class="markbox"><span class="mk">${mk}</span> ${carChip(rec[k])} ${esc(markName(rec, rec[k]))}<br><span class="note">勝率予想 ${(riders.find(r=>r.carNo===rec[k])||{}).winProb ?? ''}%</span></div>`).join('')}
       ${(rec.ana||[])[0]?`<div class="markbox"><span class="mk">△</span> ${carChip(rec.ana[0])} ${esc(markName(rec, rec.ana[0]))}</div>`:''}</div>
     <h3>${isShoubu ? '勝負買い目・3連単フォーメーション' : '参考買い目・3連単（8点）'}</h3>
@@ -312,26 +342,28 @@ function renderPrediction(rec){
   h += logicTabsHtml(rec);
   h += `<div id="pane-suisho" style="display:${logic==='suisho'?'':'none'}">` + plansHtml(rec) + anaHtml(rec) + `</div>`;
   h += `<div id="pane-s" style="display:${logic==='s'?'':'none'}">` + sHtml(rec) + `</div>`;
+  h += `</div>`;
+  let cardHtml = '', bankHtml = '', windHtml = '', commentaryHtml = '';
   if (rec.wind){
     const w = rec.wind;
-    h += `<div class="card"><h2>🌬 風（推定）</h2>
+    windHtml += `<div class="card"><h2>🌬 風（推定）</h2>
       <p>${esc(w.directionLabel)}の風 ${w.speedMs} m/s${w.gustMs!=null?`（突風 ${w.gustMs} m/s）`:''} ／ ホーム直線: ${esc(w.homeLabel)} ／ バック直線: ${esc(w.backLabel)}</p>
       <p class="note">${esc(w.forecastTime||'')} の予報（出典: ${esc(w.source||'Open-Meteo')}）。風は展開解説の材料のみで、スコアには入れていません（2024年27,715レースの検証で風速帯によるライン先頭1着率の差は18.5%/17.4%/17.7%/18.6%とほぼ無かったため）。</p></div>`;
   }
   if (rec.bank){
     const b = rec.bank;
     const dim = (v, unit) => v != null ? `${v}${unit}` : '―';
-    h += `<div class="card"><h2>🏟 バンク情報</h2>
+    bankHtml += `<div class="card"><h2>🏟 バンク情報</h2>
       <p><b>${esc(b.label||'')}</b>${b.traitComment ? ` ― ${esc(b.traitComment)}` : ''}</p>
       <p>周長 ${b.lap} m ／ みなし直線 ${dim(b.straight, ' m')} ／ カント ${dim(b.cant, '°')}</p>
       <p>2024年実測（${b.races}レース）: 勝者の決まり手 逃 ${b.nige}% ・ 捲 ${b.makuri}% ・ 差 ${b.sashi}% ／ 得点トップ勝率 ${b.topWin}% ／ 3連単払戻中央値 ${Number(b.medianPay||0).toLocaleString('ja-JP')}円</p>
       <p class="note">決まり手割合などは2024年の実測、諸元は公開バンクデータ。バンク情報は表示と展開解説の材料のみで、スコア・買い目には反映していません（検証で予測精度の向上は確認できなかったため）。</p></div>`;
   }
   if ((rec.lines||[]).length){
-    h += `<div class="card"><h2>並び予想</h2><div class="lines">` + rec.lines.map(l=>
+    cardHtml += `<div class="card"><h2>並び予想</h2><div class="lines">` + rec.lines.map(l=>
       `<div class="line-row">${l.members.map((c,i)=>`${carChip(c)}<span class="role">${esc((l.roles||[])[i]||'')}</span>`).join('<span style="color:#94a3b8">―</span> ')}${l.members.length===1?'<span class="role">単騎</span>':''}</div>`).join('') + `</div></div>`;
   }
-  h += `<div class="card"><h2>出走表（セルをタップで内訳）</h2><div class="tblwrap"><table>
+  cardHtml += `<div class="card"><h2>出走表（セルをタップで内訳）</h2><div class="tblwrap"><table>
     <tr><th>印</th><th>車</th><th>選手</th><th>級</th><th>脚</th><th>得点</th><th>S</th><th>B</th><th>逃捲差マ</th><th>勝率/連対/3連</th><th>1着S</th><th>3着内S</th><th>勝率予想</th></tr>` +
     riders.map(r=>{ const li = lineOfCar[r.carNo]; return `<tr>
       <td style="font-weight:800">${markOf[r.carNo]||''}</td><td>${carChip(r.carNo)}</td>
@@ -345,12 +377,14 @@ function renderPrediction(rec){
       <td>${r.scoreWin ?? ''}</td><td>${r.scorePlace ?? ''}</td><td>${r.winProb ?? ''}%</td></tr>`; }).join('') +
     `</table></div><p class="note">1着S＝1着スコア、3着内S＝3着内スコア（モデルv2）。◎は1着スコア首位、○▲△は3着内スコア順。</p></div>`;
   if (rec.summary || rec.scenario || (rec.lineNotes||[]).length){
-    h += `<div class="card"><h2>展開解説（テンプレート生成）</h2>
+    commentaryHtml += `<div class="card"><h2>展開解説（テンプレート生成）</h2>
       ${(rec.lineNotes||[]).map(n=>`<p><b>${esc(n.label)}</b><br>${esc(n.note)}</p>`).join('')}
       ${rec.scenario?`<p>${esc(rec.scenario)}</p>`:''}
       ${rec.summary?`<p><b>まとめ:</b> ${esc(rec.summary)}</p>`:''}
       ${rec.raceReview?`<p class="note">記者レース評（Kドリームス）: ${esc(rec.raceReview)}</p>`:''}</div>`;
   }
+  h += `<div id="predpane-card" style="display:none">${cardHtml}</div>`;
+  h += `<div id="predpane-detail" style="display:none">${commentaryHtml}${bankHtml}${windHtml}</div>`;
   return h;
 }
 
