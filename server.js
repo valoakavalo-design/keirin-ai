@@ -45,66 +45,33 @@ function resultStr(rec) {
   return String(rec.actualResult).trim();
 }
 function setsOf(rec) {
-  const shoubu = rec.shoubuTickets || [];
-  const ref = rec.tickets || [];
-  const ana = (rec.anaTickets || []).map(t => (typeof t === 'string' ? t : t.combo));
-  const s = (rec.sTickets || []).map(t => (typeof t === 'string' ? t : t.combo));
-  return { shoubu, ref, ana, s, primary: rec.isShoubu ? shoubu : ref };
-}
-// 期待値スポットの的中判定（結果は 1着-2着-3着）:
-// 2車単 = 着順どおり / 2車複 = 1・2着の2人（順不同）/ ワイド = 両者が3着内 / 3連複 = 3人全員が3着内
-function judgeEvSpots(rec, r) {
-  if (!Array.isArray(rec.evSpots)) { rec.spotHit = null; return; }
-  if (!r) { rec.evSpots.forEach(s => { s.hit = null; }); rec.spotHit = null; return; }
-  if (!rec.evSpots.length) { rec.spotHit = null; return; }
-  const [f1, f2, f3] = r.split('-').map(Number);
-  const top3 = new Set([f1, f2, f3]);
-  for (const s of rec.evSpots) {
-    const cars = s.cars || String(s.combo || '').split('-').map(Number);
-    if (s.type === '2shatan') s.hit = cars[0] === f1 && cars[1] === f2;
-    else if (s.type === '2shahuku') s.hit = cars.length === 2 && cars.includes(f1) && cars.includes(f2);
-    else if (s.type === 'wide') s.hit = cars.length === 2 && cars.every(c => top3.has(c));
-    else if (s.type === '3renhuku') s.hit = cars.length === 3 && cars.every(c => top3.has(c));
-    else s.hit = null;
-  }
-  rec.spotHit = rec.evSpots.some(s => s.hit);
+  // 的中判定の対象は印ベースの参考買い目（3連単8点）のみ（2026-11-06: 買い方戦略は全て廃止）
+  return { primary: rec.tickets || [] };
 }
 function applyResult(rec) {
   const r = resultStr(rec);
-  const sets = setsOf(rec);
-  if (!r) { rec.isHit = null; rec.isShoubuHit = null; rec.isAnaHit = null; rec.isChosenPlanHit = null; rec.sHit = null; judgeEvSpots(rec, ''); return rec; }
-  rec.isHit = sets.primary.includes(r);
-  rec.isShoubuHit = rec.isShoubu ? sets.shoubu.includes(r) : null;
-  rec.isAnaHit = sets.ana.length ? sets.ana.includes(r) : null;
-  rec.isChosenPlanHit = (rec.chosenPlan && Array.isArray(rec.chosenPlan.combos)) ? rec.chosenPlan.combos.includes(r) : null;
-  // S式の的中は、ロジックとしてS式を選んでいた場合のみ判定する
-  rec.sHit = rec.logic === 's' && sets.s.length ? sets.s.includes(r) : null;
-  judgeEvSpots(rec, r);
+  // 廃止した戦略の判定フィールドは掃除する（旧レコード互換）
+  rec.isShoubuHit = null; rec.isAnaHit = null; rec.isChosenPlanHit = null; rec.sHit = null; rec.coverHit = null; rec.spotHit = null;
+  if (!r) { rec.isHit = null; rec.winnerPattern = null; return rec; }
+  rec.isHit = setsOf(rec).primary.includes(r);
+  // 実際の勝者がどの展開パターンだったか（振り返り用。的中判定とは別枠）
+  rec.winnerPattern = model.winnerPatternOf(rec.patterns, r);
   return rec;
 }
 function computeStats() {
   const all = store.predictions;
   const resulted = all.filter(p => resultStr(p));
-  const agg = (list, setKey) => {
-    let hits = 0, n = 0, stake = 0, ret = 0, roiN = 0;
-    for (const p of list) {
-      const r = resultStr(p); if (!r) continue;
-      const set = setKey === 'shoubu' ? setsOf(p).shoubu : setsOf(p).primary;
-      if (!set.length) continue;
-      n++; if (set.includes(r)) hits++;
-      if (p.payoutYen != null) { roiN++; stake += 100 * set.length; if (set.includes(r)) ret += p.payoutYen; }
-    }
-    return { n, hits, hitRate: n ? +(hits / n * 100).toFixed(1) : null, roi: roiN ? +(ret / stake * 100).toFixed(1) : null, roiN };
-  };
-  let spotN = 0, spotHits = 0;
+  let hits = 0, n = 0, stake = 0, ret = 0, roiN = 0;
   for (const p of all) {
-    if (resultStr(p) && typeof p.spotHit === 'boolean') { spotN++; if (p.spotHit) spotHits++; }
+    const r = resultStr(p); if (!r) continue;
+    const set = setsOf(p).primary;
+    if (!set.length) continue;
+    n++; if (set.includes(r)) hits++;
+    if (p.payoutYen != null) { roiN++; stake += 100 * set.length; if (set.includes(r)) ret += p.payoutYen; }
   }
   return {
     total: all.length, resulted: resulted.length,
-    primary: agg(all, 'primary'),
-    shoubu: agg(all.filter(p => p.isShoubu), 'shoubu'),
-    spots: { n: spotN, hits: spotHits, hitRate: spotN ? +(spotHits / spotN * 100).toFixed(1) : null },
+    primary: { n, hits, hitRate: n ? +(hits / n * 100).toFixed(1) : null, roi: roiN ? +(ret / stake * 100).toFixed(1) : null, roiN },
   };
 }
 
@@ -134,29 +101,17 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
   const startTime = detail.startTime || (raceMeta ? raceMeta.startTime : '');
   const { marks, honmei } = model.scoreAll(detail.riders, detail.lines);
   const probs = model.comboProbabilities(detail.riders);
-  let oddsRes = { status: 'unavailable', odds: {}, time: '', count: 0, types: null };
-  try { oddsRes = await kdreams.getOddsAll(venueSlug, kaisaiDateId, raceNo); } catch { /* オッズ無しでも予想は続行 */ }
+  let oddsRes = { status: 'unavailable', odds: {}, time: '', count: 0 };
+  try { oddsRes = await kdreams.getOdds(venueSlug, kaisaiDateId, raceNo); } catch { /* オッズ無しでも予想は続行 */ }
   const oddsMap = oddsRes.status === 'ok' ? oddsRes.odds : null;
-  // 期待値スポット用: 券種ごとに取れた券種だけ実オッズを渡す（取れない券種は null = 対象外）
-  const spotOdds = {};
-  let evSpotOddsOk = false;
-  for (const t of ['2shatan', '2shahuku', 'wide', '3renhuku']) {
-    const info = oddsRes.types ? oddsRes.types[t] : null;
-    if (info && info.status === 'ok') { spotOdds[t] = info.odds; evSpotOddsOk = true; }
-    else spotOdds[t] = null;
-  }
   const tickets = model.buildTickets(marks, probs, oddsMap);
-  const plans = model.buildPlans(marks, detail.riders, probs, oddsMap);
-  const isShoubu = honmei.winProb >= 55;
-  const primary = isShoubu ? tickets.shoubu : tickets.reference;
-  const anaTickets = model.buildAna(detail.riders, marks, probs, oddsMap);
-  const anaShoubu = model.isAnaShoubu(anaTickets);
-  const sSet = model.buildSshiki(detail.riders, marks, probs, oddsMap);
-  const evSpots = model.buildEvSpots(detail.riders, probs, spotOdds);
+  const primary = tickets.reference;
   const wind = await getWind(venueSlug, date, startTime).catch(() => null);
   const venueMeta = venuesMaster[venueSlug] || {};
   // バンク情報は表示・展開解説の材料のみ（スコア・確率・買い目・EVには一切使わない）
   const bank = venueMeta.bank ? { ...venueMeta.bank, traitComment: model.bankTraitComment(venueMeta.bank) } : null;
+  // 展開パターン（2〜3通り）: 勝者ベースのグループ分割。提示方法の改善であり買い方戦略ではない（EV・回収率の訴求なし）
+  const patterns = model.buildPatterns(detail.riders, detail.lines, marks, probs, oddsMap, bank);
   const commentary = model.buildCommentary(detail.riders, detail.lines, marks, honmei, wind, bank);
   const rec = {
     id: (store.predictions.reduce((m, p) => Math.max(m, p.id || 0), 0) + 1),
@@ -167,18 +122,14 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
     startTime, sourceUrl: detail.sourceUrl,
     riders: detail.riders, lines: detail.lines,
     honmei: marks.honmei, taikou: marks.taikou, tanana: marks.tanana, ana: marks.ana,
-    honmeiWinProb: honmei.winProb, isShoubu,
+    honmeiWinProb: honmei.winProb, isShoubu: false,
     tickets: tickets.reference.combos, ticketDetails: tickets.reference.details,
-    shoubuTickets: tickets.shoubu.combos, shoubuTicketDetails: tickets.shoubu.details,
-    primaryEv: primary.ev, primaryHitProb: primary.hitProb,
-    plans, chosenPlan: null, isChosenPlanHit: null,
-    anaTickets, anaShoubu,
-    sTickets: sSet.tickets, sTotalProb: sSet.totalProb, logic: 'suisho', sHit: null,
-    evSpots, evSpotOddsOk, spotHit: null,
+    primaryHitProb: primary.hitProb,
+    patterns, winnerPattern: null,
     oddsStatus: oddsRes.status, oddsCount: oddsRes.count, oddsTime: oddsRes.time, oddsFetchedAt: new Date().toISOString(),
     wind, bank, lineNotes: commentary.lineNotes, summary: commentary.summary, scenario: commentary.scenario,
     raceReview: detail.raceReview,
-    actualResult: null, payoutYen: null, isHit: null, isShoubuHit: null, isAnaHit: null,
+    actualResult: null, payoutYen: null, isHit: null,
   };
   store.predictions.unshift(rec);
   saveStore(store);
@@ -186,7 +137,7 @@ async function predict({ date, venueSlug, kaisaiDateId, raceNo }) {
 }
 
 // ---------- 次走レース一覧（全レース一括分析） ----------
-// 出走表のみからモデルv2で採点する（オッズは取得しない。オッズ/EV/穴狙いは各レースを開いた時に計算）。
+// 出走表のみからモデルv2で採点する（オッズは取得しない。オッズ・展開パターンは各レースを開いた時に計算）。
 // 勝負度 = ◎の予想勝率、荒れ度 = 100 −（予想勝率1位＋2位）。定義は画面の注記にも明示する。
 const analyzeMemCache = new Map(); // date -> data
 const analyzeInflight = new Map(); // date -> Promise<data>
@@ -346,27 +297,6 @@ const server = http.createServer(async (req, res) => {
         rec.actualResult = result;
         rec.payoutYen = body.payoutYen === '' || body.payoutYen == null ? null : +body.payoutYen;
       }
-      applyResult(rec); saveStore(store);
-      return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
-    }
-    const mLogic = /^\/api\/predictions\/(\d+)\/logic$/.exec(p);
-    if (mLogic && req.method === 'POST') {
-      const body = await readBody(req);
-      const rec = store.predictions.find(x => x.id === +mLogic[1]);
-      if (!rec) return sendJson(res, 404, { ok: false, error: 'not found' });
-      if (!['suisho', 's'].includes(body.logic)) return sendJson(res, 400, { ok: false, error: 'logic は suisho か s で指定してください' });
-      rec.logic = body.logic;
-      applyResult(rec); saveStore(store);
-      return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
-    }
-    const mPlan = /^\/api\/predictions\/(\d+)\/plan$/.exec(p);
-    if (mPlan && req.method === 'POST') {
-      const body = await readBody(req);
-      const rec = store.predictions.find(x => x.id === +mPlan[1]);
-      if (!rec) return sendJson(res, 404, { ok: false, error: 'not found' });
-      const plan = (rec.plans || []).find(pl => pl.id === body.planId);
-      if (!plan) return sendJson(res, 400, { ok: false, error: 'プランが見つかりません' });
-      rec.chosenPlan = { id: plan.id, name: plan.name, combos: plan.combos };
       applyResult(rec); saveStore(store);
       return sendJson(res, 200, { ok: true, prediction: rec, stats: computeStats() });
     }
